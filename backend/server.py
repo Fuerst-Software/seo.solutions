@@ -72,69 +72,168 @@ SEARCH_HEADERS = {
 OSM_HEADERS = {"User-Agent": "seo.solutions/1.0 (contact@fuerst-software.com)"}
 
 
-def discover_website(name, location):
-    """Sucht per DuckDuckGo nach der Website einer Firma"""
+SKIP_DOMAINS = [
+    "facebook.com", "instagram.com", "linkedin.com", "twitter.com", "x.com",
+    "youtube.com", "tiktok.com", "pinterest.com", "xing.com",
+    "wko.at", "herold.at", "firmenabc.at", "firmen.at",
+    "google.", "bing.com", "yahoo.com", "duckduckgo.com",
+    "wikipedia.", "yelp.", "gelbeseiten.", "11880.",
+    "kununu.", "glassdoor.", "indeed.", "karriere.at",
+    "amazon.", "ebay.", "willhaben.at",
+]
+
+
+def _extract_ddg_url(href):
+    """Extrahiert echte URL aus DuckDuckGo Redirect"""
+    if "uddg=" in href:
+        try:
+            from urllib.parse import parse_qs, unquote
+            qs = href.split("?", 1)[-1] if "?" in href else ""
+            return unquote(parse_qs(qs).get("uddg", [""])[0])
+        except Exception:
+            pass
+    return href if href.startswith("http") else ""
+
+
+def _is_company_url(href, name):
+    """Prüft ob URL zur Firma gehört (kein Portal/Social Media)"""
+    if not href or not href.startswith("http"):
+        return False
+    href_lower = href.lower()
+    if any(d in href_lower for d in SKIP_DOMAINS):
+        return False
+    return True
+
+
+def _ddg_search(query):
+    """DuckDuckGo HTML-Suche, gibt Liste von (url, title) zurück"""
+    results = []
     try:
-        search_q = f"{name} {location} website"
         resp = requests.get(
             "https://html.duckduckgo.com/html/",
-            params={"q": search_q},
+            params={"q": query},
             headers=SEARCH_HEADERS,
-            timeout=10,
+            timeout=12,
         )
         if resp.status_code != 200:
-            return ""
+            return results
         soup = BeautifulSoup(resp.text, "html.parser")
-        name_parts = name.lower().split()
-
-        for a in soup.select("a.result__a, a.result__url"):
-            href = a.get("href", "")
-            text = a.get_text(strip=True).lower()
-            if not href.startswith("http"):
-                if "uddg=" in href:
-                    from urllib.parse import parse_qs
-                    parsed = parse_qs(href.split("?", 1)[-1] if "?" in href else "")
-                    href = parsed.get("uddg", [""])[0]
-                else:
-                    continue
-            if not href.startswith("http"):
+        for item in soup.select(".result"):
+            a = item.select_one("a.result__a")
+            if not a:
                 continue
-            skip = ["facebook.com", "instagram.com", "linkedin.com", "twitter.com",
-                    "youtube.com", "wko.at", "herold.at", "firmenabc.at", "google.",
-                    "wikipedia.", "yelp.", "gelbeseiten.", "duckduckgo."]
-            if any(s in href.lower() for s in skip):
-                continue
-            if any(p in href.lower() or p in text for p in name_parts[:2] if len(p) > 3):
-                return href
-        for a in soup.select("a.result__a"):
-            href = a.get("href", "")
-            if "uddg=" in href:
-                from urllib.parse import parse_qs
-                parsed = parse_qs(href.split("?", 1)[-1] if "?" in href else "")
-                href = parsed.get("uddg", [""])[0]
-            if href.startswith("http") and not any(s in href.lower() for s in ["facebook", "instagram", "linkedin", "twitter", "youtube", "wko.at", "herold.at", "wikipedia", "google"]):
-                return href
-    except Exception as e:
-        print(f"[DISCOVER] Error for {name}: {e}")
-    return ""
-
-
-def check_website_on_portals(name, location):
-    """Prüft Herold und WKO Detail-Seite nach Website"""
-    try:
-        q = name.lower().replace(" ", "-").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
-        url = f"https://www.herold.at/gelbe-seiten/was_{q}/wo_{location.lower().replace(' ', '-')}/"
-        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=8)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            for a in soup.find_all("a", href=True):
-                href = a["href"]
-                if href.startswith("http") and "herold.at" not in href and "google" not in href:
-                    name_parts = name.lower().split()
-                    if any(p in href.lower() for p in name_parts[:2] if len(p) > 3):
-                        return href
+            href = _extract_ddg_url(a.get("href", ""))
+            title = a.get_text(strip=True)
+            snippet_el = item.select_one(".result__snippet")
+            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+            if href:
+                results.append({"url": href, "title": title, "snippet": snippet})
     except Exception:
         pass
+    return results
+
+
+def deep_discover_website(name, address, phone, email, location):
+    """
+    Mehrstufige tiefe Website-Suche:
+    1. DuckDuckGo: "Firmenname Ort"
+    2. DuckDuckGo: "Firmenname Ort website"
+    3. DuckDuckGo: "Firmenname Adresse"
+    4. DuckDuckGo: Telefonnummer
+    5. DuckDuckGo: Email-Domain
+    6. WKO Detail-Seite
+    """
+    name_clean = name.strip()
+    name_parts = [p.lower() for p in name_clean.split() if len(p) > 2]
+    found_urls = []
+
+    def score_url(url, title="", snippet=""):
+        """Bewertet wie gut eine URL zur Firma passt"""
+        s = 0
+        url_lower = url.lower()
+        combined = (title + " " + snippet).lower()
+        for part in name_parts:
+            if part in url_lower:
+                s += 10
+            if part in combined:
+                s += 3
+        if ".at" in url_lower or ".com" in url_lower or ".de" in url_lower:
+            s += 2
+        return s
+
+    # Suchanfragen mit verschiedenen Kombinationen
+    search_queries = [
+        f'"{name_clean}" {location}',
+        f"{name_clean} {location} website",
+        f"{name_clean} {location} homepage",
+    ]
+    if address and len(address) > 10:
+        street = address.split(",")[0].strip()
+        if street:
+            search_queries.append(f'"{name_clean}" "{street}"')
+
+    if phone and len(phone) > 5:
+        phone_clean = phone.replace(" ", "").replace("-", "").replace("/", "")
+        search_queries.append(f'"{phone_clean}"')
+
+    if email and "@" in email:
+        domain = email.split("@")[1]
+        if domain and not any(d in domain for d in ["gmail", "yahoo", "hotmail", "gmx", "outlook", "icloud", "aon"]):
+            candidate = f"https://{domain}" if not domain.startswith("www.") else f"https://www.{domain}"
+            try:
+                test = requests.head(candidate, timeout=5, allow_redirects=True)
+                if test.status_code < 400:
+                    return candidate
+            except Exception:
+                candidate2 = f"https://www.{domain}"
+                try:
+                    test2 = requests.head(candidate2, timeout=5, allow_redirects=True)
+                    if test2.status_code < 400:
+                        return candidate2
+                except Exception:
+                    pass
+
+    print(f"[DISCOVER] Searching for: {name_clean} ({len(search_queries)} queries)")
+
+    for sq in search_queries:
+        results = _ddg_search(sq)
+        for r in results:
+            url = r["url"]
+            if _is_company_url(url, name_clean):
+                sc = score_url(url, r.get("title", ""), r.get("snippet", ""))
+                found_urls.append((url, sc))
+        if found_urls:
+            best = max(found_urls, key=lambda x: x[1])
+            if best[1] >= 5:
+                print(f"[DISCOVER] Found (score {best[1]}): {name_clean} → {best[0]}")
+                return best[0]
+        time.sleep(0.3)
+
+    # WKO Detail-Seite als letzte Quelle
+    try:
+        wko_q = name_clean.lower().replace(" ", "-").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        wko_url = f"https://firmen.wko.at/{requests.utils.quote(wko_q)}/{requests.utils.quote(location.lower())}/"
+        resp = requests.get(wko_url, headers=SEARCH_HEADERS, timeout=10, allow_redirects=True)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            web_icon = soup.find("use", attrs={"xlink:href": "#website"})
+            if web_icon:
+                link = web_icon.find_parent("a")
+                if link:
+                    span = link.find("span")
+                    url = span.get_text(strip=True) if span else ""
+                    if url and url.startswith("http"):
+                        print(f"[DISCOVER] Found via WKO detail: {name_clean} → {url}")
+                        return url
+    except Exception:
+        pass
+
+    if found_urls:
+        best = max(found_urls, key=lambda x: x[1])
+        print(f"[DISCOVER] Best guess (score {best[1]}): {name_clean} → {best[0]}")
+        return best[0]
+
+    print(f"[DISCOVER] Nothing found for: {name_clean}")
     return ""
 
 
@@ -589,18 +688,21 @@ def search_businesses():
         except Exception as e:
             print(f"[SEARCH] Error in {source_name}: {e}")
 
-    # Website-Discovery für Firmen ohne Website
+    # Tiefe Website-Discovery für ALLE Firmen ohne Website
     no_site = [b for b in all_results if not b.get("website")]
     if no_site:
-        print(f"[SEARCH] Discovering websites for {len(no_site)} firms without website...")
-        for biz in no_site[:10]:
-            found_url = discover_website(biz["name"], location)
-            if not found_url:
-                found_url = check_website_on_portals(biz["name"], location)
+        print(f"[SEARCH] Deep website discovery for {len(no_site)} firms...")
+        for biz in no_site:
+            found_url = deep_discover_website(
+                name=biz["name"],
+                address=biz.get("address", ""),
+                phone=biz.get("phone", ""),
+                email=biz.get("email", ""),
+                location=location,
+            )
             if found_url:
                 biz["website"] = found_url
                 biz["websiteDiscovered"] = True
-                print(f"[DISCOVER] Found: {biz['name']} → {found_url}")
 
     # Sofortige Website-Analyse für alle Ergebnisse
     if analyze:
