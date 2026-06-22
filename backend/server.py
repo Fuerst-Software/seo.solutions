@@ -62,7 +62,9 @@ def index():
     return send_from_directory(str(ROOT), "index.html")
 
 
-# ===== BUSINESS SEARCH (Google Places API) =====
+# ===== BUSINESS SEARCH (OpenStreetMap — kostenlos) =====
+
+OSM_HEADERS = {"User-Agent": "seo.solutions/1.0 (contact@fuerst-software.com)"}
 
 @app.post("/api/search/businesses")
 def search_businesses():
@@ -74,69 +76,83 @@ def search_businesses():
     if not query or not location:
         return jsonify({"error": "query and location are required"}), 400
 
-    api_key = os.environ.get("GOOGLE_PLACES_API_KEY", "")
-    if not api_key:
-        return jsonify({
-            "error": "Google Places API key not configured. "
-                     "Set the GOOGLE_PLACES_API_KEY environment variable to enable business search."
-        }), 503
-
     try:
-        # First geocode the location to get lat/lng
         geo_resp = requests.get(
-            "https://maps.googleapis.com/maps/api/geocode/json",
-            params={"address": location, "key": api_key},
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": location, "format": "json", "limit": 1},
+            headers=OSM_HEADERS,
             timeout=10,
         )
         geo_data = geo_resp.json()
-        if not geo_data.get("results"):
-            return jsonify({"error": f"Could not geocode location: {location}"}), 400
+        if not geo_data:
+            return jsonify({"error": f"Ort nicht gefunden: {location}"}), 400
 
-        lat_lng = geo_data["results"][0]["geometry"]["location"]
+        lat = float(geo_data[0]["lat"])
+        lon = float(geo_data[0]["lon"])
 
-        # Search nearby places
-        places_resp = requests.get(
-            "https://maps.googleapis.com/maps/api/place/textsearch/json",
-            params={
-                "query": query,
-                "location": f"{lat_lng['lat']},{lat_lng['lng']}",
-                "radius": radius,
-                "key": api_key,
-            },
-            timeout=10,
+        overpass_query = f"""
+        [out:json][timeout:15];
+        (
+          nwr["name"](around:{radius},{lat},{lon});
+        );
+        out center 60;
+        """
+        ov_resp = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={"data": overpass_query},
+            headers=OSM_HEADERS,
+            timeout=20,
         )
-        places_data = places_resp.json()
+        ov_data = ov_resp.json()
 
+        query_lower = query.lower()
         businesses = []
-        for place in places_data.get("results", []):
-            # Fetch details for phone and website
-            detail = {}
-            place_id = place.get("place_id")
-            if place_id:
-                det_resp = requests.get(
-                    "https://maps.googleapis.com/maps/api/place/details/json",
-                    params={
-                        "place_id": place_id,
-                        "fields": "formatted_phone_number,website",
-                        "key": api_key,
-                    },
-                    timeout=10,
-                )
-                detail = det_resp.json().get("result", {})
+        seen_names = set()
+
+        for el in ov_data.get("elements", []):
+            tags = el.get("tags", {})
+            name = tags.get("name", "")
+            if not name:
+                continue
+
+            category = (
+                tags.get("shop") or tags.get("craft") or tags.get("office")
+                or tags.get("amenity") or tags.get("tourism") or tags.get("leisure")
+                or ""
+            )
+            all_tags = " ".join(str(v) for v in tags.values()).lower()
+            if query_lower not in all_tags and query_lower not in name.lower():
+                continue
+
+            name_key = name.lower().strip()
+            if name_key in seen_names:
+                continue
+            seen_names.add(name_key)
+
+            addr_parts = [
+                tags.get("addr:street", ""),
+                tags.get("addr:housenumber", ""),
+                tags.get("addr:postcode", ""),
+                tags.get("addr:city", ""),
+            ]
+            address = " ".join(p for p in addr_parts if p).strip()
 
             businesses.append({
-                "name": place.get("name", ""),
-                "address": place.get("formatted_address", ""),
-                "phone": detail.get("formatted_phone_number", ""),
-                "website": detail.get("website", ""),
-                "rating": place.get("rating"),
-                "types": place.get("types", []),
+                "name": name,
+                "address": address or location,
+                "phone": tags.get("phone") or tags.get("contact:phone", ""),
+                "website": tags.get("website") or tags.get("contact:website", ""),
+                "email": tags.get("email") or tags.get("contact:email", ""),
+                "category": category.replace("_", " ").title() if category else "",
+                "rating": None,
             })
 
-        return jsonify({"businesses": businesses, "count": len(businesses)})
+        businesses.sort(key=lambda b: (not b["website"], not b["phone"], b["name"]))
+
+        return jsonify({"businesses": businesses[:40], "count": len(businesses)})
 
     except requests.RequestException as e:
-        return jsonify({"error": f"Google API request failed: {str(e)}"}), 502
+        return jsonify({"error": f"Suche fehlgeschlagen: {str(e)}"}), 502
 
 
 # ===== WEBSITE SEO ANALYSIS =====

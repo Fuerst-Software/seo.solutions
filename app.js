@@ -966,6 +966,7 @@ async function searchBusinesses() {
           <div class="search-result-meta">
             ${biz.address ? `<span>${escHtml(biz.address)}</span>` : ''}
             ${biz.phone ? `<span>Tel: ${escHtml(biz.phone)}</span>` : ''}
+            ${biz.email ? `<span>E-Mail: ${escHtml(biz.email)}</span>` : ''}
             ${biz.website ? `<span class="search-result-url">${escHtml(biz.website)}</span>` : ''}
           </div>
           ${stars ? `<div class="search-result-rating">${stars} <span>${biz.rating.toFixed(1)}</span></div>` : ''}
