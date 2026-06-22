@@ -6,26 +6,26 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 
 :root {
-  /* ── Luminous sky canvas ── */
-  --bg: #e8edf8;
-  --bg-mesh-1: #c9dbff;
-  --bg-mesh-2: #dfe8ff;
-  --bg-mesh-3: #e0d4f7;
-  --bg-mesh-4: #d0ecff;
+  /* ── macOS Desktop Canvas — deeper, richer ── */
+  --bg: #d5dbe8;
+  --bg-mesh-1: #a8c4f0;
+  --bg-mesh-2: #c4d4f4;
+  --bg-mesh-3: #c8b8e8;
+  --bg-mesh-4: #a8d8f4;
 
-  /* ── Glass surfaces ── */
-  --glass: rgba(255,255,255,0.42);
-  --glass-strong: rgba(255,255,255,0.68);
-  --glass-card: rgba(255,255,255,0.52);
-  --glass-hover: rgba(255,255,255,0.62);
-  --glass-border: rgba(255,255,255,0.75);
-  --glass-border-2: rgba(255,255,255,0.55);
-  --glass-inner: inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(0,20,80,0.04);
-  --glass-inner-strong: inset 0 2px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,20,80,0.06);
+  /* ── Glass — more translucent, visible depth ── */
+  --glass: rgba(255,255,255,0.38);
+  --glass-strong: rgba(255,255,255,0.62);
+  --glass-card: rgba(255,255,255,0.48);
+  --glass-hover: rgba(255,255,255,0.58);
+  --glass-border: rgba(255,255,255,0.6);
+  --glass-border-2: rgba(255,255,255,0.42);
+  --glass-inner: inset 0 1px 0 rgba(255,255,255,0.75), inset 0 -1px 0 rgba(0,20,80,0.06);
+  --glass-inner-strong: inset 0 2px 0 rgba(255,255,255,0.85), inset 0 -1px 0 rgba(0,20,80,0.08);
 
-  /* ── Specular / refraction ── */
-  --specular: linear-gradient(165deg, rgba(255,255,255,0.7) 0%, rgba(255,255,255,0.1) 40%, transparent 60%);
-  --specular-strong: linear-gradient(155deg, rgba(255,255,255,0.85) 0%, rgba(255,255,255,0.2) 35%, transparent 55%);
+  /* ── Specular / refraction — subtler ── */
+  --specular: linear-gradient(165deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0.08) 35%, transparent 55%);
+  --specular-strong: linear-gradient(155deg, rgba(255,255,255,0.65) 0%, rgba(255,255,255,0.15) 30%, transparent 50%);
 
   /* ── Navy / Blue ── */
   --navy: #080e22;
@@ -40,35 +40,35 @@
   --blue-glow: rgba(37,99,255,0.22);
   --blue-glow-strong: rgba(37,99,255,0.45);
 
-  /* ── Text ── */
-  --text: #080e22;
-  --text-2: #1e2a45;
-  --text-3: #4a5672;
-  --text-4: #8895b0;
+  /* ── Text — stronger contrast ── */
+  --text: #050a1a;
+  --text-2: #141e38;
+  --text-3: #3d4a66;
+  --text-4: #7280a0;
 
   /* ── Lines ── */
   --line: rgba(0,15,60,0.07);
   --line-2: rgba(0,15,60,0.12);
 
-  /* ── Status ── */
-  --green: #00c07b;
-  --green-bg: rgba(0,192,123,0.1);
-  --green-glow: rgba(0,192,123,0.3);
-  --red: #ff3b5c;
-  --red-bg: rgba(255,59,92,0.08);
+  /* ── Status — macOS vibrant ── */
+  --green: #30d158;
+  --green-bg: rgba(48,209,88,0.12);
+  --green-glow: rgba(48,209,88,0.35);
+  --red: #ff453a;
+  --red-bg: rgba(255,69,58,0.1);
   --orange: #ff9f0a;
-  --orange-bg: rgba(255,159,10,0.08);
-  --purple: #8b5cf6;
+  --orange-bg: rgba(255,159,10,0.1);
+  --purple: #bf5af2;
 
-  /* ── Shadows ── */
-  --shadow-xs: 0 1px 3px rgba(0,12,50,0.04);
-  --shadow-sm: 0 4px 16px rgba(0,12,50,0.06);
-  --shadow: 0 12px 40px rgba(0,12,50,0.09), 0 2px 10px rgba(0,12,50,0.04);
-  --shadow-md: 0 20px 56px rgba(0,12,50,0.12), 0 6px 20px rgba(0,12,50,0.06);
-  --shadow-lg: 0 32px 80px rgba(0,12,50,0.16), 0 10px 30px rgba(0,12,50,0.08);
-  --shadow-xl: 0 48px 120px rgba(0,12,50,0.22), 0 16px 48px rgba(0,12,50,0.12);
-  --shadow-blue: 0 14px 40px rgba(37,99,255,0.38), 0 4px 14px rgba(37,99,255,0.2);
-  --shadow-float: 0 24px 64px rgba(0,12,50,0.15), 0 8px 24px rgba(0,12,50,0.08), 0 0 0 1px rgba(255,255,255,0.5);
+  /* ── Shadows — deeper for contrast ── */
+  --shadow-xs: 0 1px 3px rgba(0,8,40,0.06);
+  --shadow-sm: 0 4px 16px rgba(0,8,40,0.09);
+  --shadow: 0 12px 40px rgba(0,8,40,0.13), 0 2px 10px rgba(0,8,40,0.06);
+  --shadow-md: 0 20px 56px rgba(0,8,40,0.17), 0 6px 20px rgba(0,8,40,0.09);
+  --shadow-lg: 0 32px 80px rgba(0,8,40,0.22), 0 10px 30px rgba(0,8,40,0.12);
+  --shadow-xl: 0 48px 120px rgba(0,8,40,0.28), 0 16px 48px rgba(0,8,40,0.16);
+  --shadow-blue: 0 14px 40px rgba(37,99,255,0.42), 0 4px 14px rgba(37,99,255,0.24);
+  --shadow-float: 0 24px 64px rgba(0,8,40,0.2), 0 8px 24px rgba(0,8,40,0.12), 0 0 0 1px rgba(255,255,255,0.45);
 
   /* ── Geometry ── */
   --radius: 28px;
@@ -118,14 +118,15 @@ body{
 body::before{
   content:'';position:fixed;inset:-30%;z-index:-1;
   background:
-    radial-gradient(50% 45% at 15% 20%, var(--bg-mesh-1) 0%, transparent 70%),
-    radial-gradient(40% 50% at 85% 15%, var(--bg-mesh-3) 0%, transparent 65%),
-    radial-gradient(55% 50% at 75% 85%, var(--bg-mesh-4) 0%, transparent 65%),
-    radial-gradient(45% 55% at 20% 80%, var(--bg-mesh-2) 0%, transparent 60%),
-    radial-gradient(30% 30% at 50% 50%, rgba(255,255,255,0.5) 0%, transparent 70%),
+    radial-gradient(60% 50% at 10% 15%, var(--bg-mesh-1) 0%, transparent 65%),
+    radial-gradient(45% 55% at 90% 10%, var(--bg-mesh-3) 0%, transparent 60%),
+    radial-gradient(50% 45% at 80% 90%, var(--bg-mesh-4) 0%, transparent 60%),
+    radial-gradient(55% 50% at 15% 85%, var(--bg-mesh-2) 0%, transparent 55%),
+    radial-gradient(35% 35% at 50% 45%, rgba(255,255,255,0.35) 0%, transparent 65%),
+    radial-gradient(70% 60% at 50% 50%, rgba(100,140,220,0.15) 0%, transparent 80%),
     var(--bg);
-  filter:saturate(1.15) brightness(1.02);
-  animation: meshShift 30s ease infinite alternate;
+  filter:saturate(1.25) brightness(0.98);
+  animation: meshShift 25s ease infinite alternate;
 }
 @keyframes meshShift{
   0%{transform:translate(0,0) scale(1)}
@@ -145,10 +146,10 @@ button,input,textarea,select{font:inherit}
   width:var(--sidebar-w);flex-shrink:0;display:flex;flex-direction:column;
   overflow-y:auto;overflow-x:hidden;z-index:200;
   border-radius:var(--radius);
-  background:linear-gradient(170deg,rgba(12,18,48,0.88) 0%,rgba(8,14,34,0.92) 100%);
+  background:linear-gradient(170deg,rgba(10,14,38,0.94) 0%,rgba(6,10,28,0.96) 100%);
   backdrop-filter:var(--blur-strong);-webkit-backdrop-filter:var(--blur-strong);
-  border:1px solid rgba(255,255,255,0.12);
-  box-shadow:var(--shadow-lg),inset 0 1px 0 rgba(255,255,255,0.15);
+  border:1px solid rgba(255,255,255,0.1);
+  box-shadow:var(--shadow-xl),inset 0 1px 0 rgba(255,255,255,0.12);
   transition:transform var(--dur) var(--ease);
 }
 .sidebar-logo{
@@ -242,9 +243,9 @@ button,input,textarea,select{font:inherit}
   height:var(--topbar-h);
   background:var(--glass-strong);
   backdrop-filter:var(--blur);-webkit-backdrop-filter:var(--blur);
-  border-bottom:1px solid var(--line);
+  border-bottom:1px solid rgba(0,10,40,0.08);
   display:flex;align-items:center;gap:14px;padding:0 26px;flex-shrink:0;z-index:100;
-  box-shadow:var(--glass-inner);
+  box-shadow:var(--glass-inner),0 4px 20px rgba(0,8,40,0.06);
 }
 .topbar-title{flex:1;font-size:17px;font-weight:750;color:var(--navy);letter-spacing:-0.03em}
 .topbar-actions{display:flex;align-items:center;gap:10px}
