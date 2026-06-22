@@ -371,80 +371,93 @@ def search_firmenabc(query, location):
 
 
 def search_wko(query, location):
-    """WKO Firmen A-Z — Wirtschaftskammer Österreich (server-rendered HTML)"""
+    """WKO Firmen A-Z — sucht Hauptort + alle Bezirke aus WKO-Links"""
     results = []
     try:
         q = query.lower().strip()
         l = location.lower().strip()
-        url = f"https://firmen.wko.at/{requests.utils.quote(q)}/{requests.utils.quote(l)}/"
-        print(f"[WKO] Fetching: {url}")
-        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15, allow_redirects=True)
+        base_url = f"https://firmen.wko.at/{requests.utils.quote(q)}/{requests.utils.quote(l)}/"
+        print(f"[WKO] Fetching: {base_url}")
+        resp = requests.get(base_url, headers=SEARCH_HEADERS, timeout=15, allow_redirects=True)
         print(f"[WKO] Status: {resp.status_code}, Length: {len(resp.text)}")
         if resp.status_code != 200:
             return results
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        for article in soup.select("article.search-result-article"):
-            # Name
-            name_el = article.select_one(".search-result-header h3")
-            name = name_el.get_text(strip=True) if name_el else ""
-            if not is_valid_business(name):
-                continue
+        # Auch alle Bezirk-Links laden für breitere Suche
+        bezirk_links = []
+        for a in soup.select("a.link.list-group-item"):
+            href = a.get("href", "")
+            if href and "bezirk" in href.lower():
+                full = "https://firmen.wko.at" + href if href.startswith("/") else href
+                bezirk_links.append(full)
+        print(f"[WKO] Found {len(bezirk_links)} Bezirk-Links")
 
-            # Branche
-            cat_el = article.select_one(".title-details")
-            category = cat_el.get_text(strip=True) if cat_el else query
+        all_soups = [soup]
+        for bz_url in bezirk_links[:5]:
+            try:
+                bz_resp = requests.get(bz_url, headers=SEARCH_HEADERS, timeout=12, allow_redirects=True)
+                if bz_resp.status_code == 200:
+                    all_soups.append(BeautifulSoup(bz_resp.text, "html.parser"))
+            except Exception:
+                pass
 
-            # Adresse
-            street_el = article.select_one(".address .street")
-            place_el = article.select_one(".address .place")
-            street = street_el.get_text(strip=True) if street_el else ""
-            place = place_el.get_text(strip=True).replace("\xa0", " ").strip() if place_el else ""
-            address = f"{street}, {place}".strip(", ") if street or place else location
+        seen_wko = set()
+        for s in all_soups:
+            for article in s.select("article.search-result-article"):
+                name_el = article.select_one(".search-result-header h3")
+                name = name_el.get_text(strip=True) if name_el else ""
+                if not is_valid_business(name):
+                    continue
+                nk = name.lower().strip()
+                if nk in seen_wko:
+                    continue
+                seen_wko.add(nk)
 
-            # Telefon
-            phone = ""
-            phone_el = article.select_one("a[href^='tel:']")
-            if phone_el:
-                span = phone_el.find("span")
-                phone = span.get_text(strip=True) if span else phone_el.get_text(strip=True)
+                cat_el = article.select_one(".title-details")
+                category = cat_el.get_text(strip=True) if cat_el else ""
 
-            # Email
-            email = ""
-            email_el = article.select_one("a[href^='mailto:']")
-            if email_el:
-                email = email_el["href"].replace("mailto:", "")
+                street_el = article.select_one(".address .street")
+                place_el = article.select_one(".address .place")
+                street = street_el.get_text(strip=True) if street_el else ""
+                place = place_el.get_text(strip=True).replace("\xa0", " ").strip() if place_el else ""
+                address = f"{street}, {place}".strip(", ") if street or place else location
 
-            # Website
-            website = ""
-            web_icon = article.find("use", attrs={"xlink:href": "#website"})
-            if web_icon:
-                web_link = web_icon.find_parent("a")
-                if web_link:
-                    span = web_link.find("span")
-                    website = span.get_text(strip=True) if span else ""
+                phone = ""
+                phone_el = article.select_one("a[href^='tel:']")
+                if phone_el:
+                    span = phone_el.find("span")
+                    phone = span.get_text(strip=True) if span else phone_el.get_text(strip=True)
 
-            # Detail-Link für mehr Infos
-            detail_link = ""
-            title_a = article.select_one("a.title-link")
-            if title_a and title_a.get("href"):
-                detail_link = "https://firmen.wko.at" + title_a["href"]
+                email = ""
+                email_el = article.select_one("a[href^='mailto:']")
+                if email_el:
+                    email = email_el["href"].replace("mailto:", "")
 
-            results.append({
-                "name": name,
-                "address": address,
-                "phone": phone,
-                "website": website,
-                "email": email,
-                "category": category or query,
-                "rating": None,
-                "source": "WKO Firmen A-Z",
-                "detailUrl": detail_link,
-            })
-        print(f"[WKO] Found: {len(results)} businesses")
+                website = ""
+                web_icon = article.find("use", attrs={"xlink:href": "#website"})
+                if web_icon:
+                    web_link = web_icon.find_parent("a")
+                    if web_link:
+                        sp = web_link.find("span")
+                        website = sp.get_text(strip=True) if sp else ""
+
+                detail_link = ""
+                title_a = article.select_one("a.title-link")
+                if title_a and title_a.get("href"):
+                    detail_link = "https://firmen.wko.at" + title_a["href"]
+
+                results.append({
+                    "name": name, "address": address, "phone": phone,
+                    "website": website, "email": email,
+                    "category": category or query,
+                    "rating": None, "source": "WKO Firmen A-Z",
+                    "detailUrl": detail_link,
+                })
+        print(f"[WKO] Found: {len(results)} businesses from {len(all_soups)} pages")
     except Exception as e:
         print(f"[WKO] Error: {e}")
-    return results[:30]
+    return results[:60]
 
 
 # Deutsche Branche → OSM-Tags Zuordnung
@@ -613,7 +626,7 @@ def search_herold_api(query, location):
 
 
 def quick_analyze(url):
-    """Schnelle Website-Analyse: nur Status + Title + Meta prüfen"""
+    """Tiefe Website-Analyse: SEO Score aus 15+ Faktoren"""
     result = {"hasWebsite": False, "online": False, "title": "", "seoScore": 0}
     if not url:
         return result
@@ -621,34 +634,161 @@ def quick_analyze(url):
     try:
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
-        resp = requests.get(url, timeout=8, headers={
+        start = time.time()
+        resp = requests.get(url, timeout=10, headers={
             "User-Agent": "Mozilla/5.0 (compatible; SEOSolutionsBot/1.0)"
-        })
+        }, allow_redirects=True)
+        load_time = round(time.time() - start, 2)
+        result["loadTime"] = load_time
+        result["statusCode"] = resp.status_code
+        result["finalUrl"] = resp.url
         result["online"] = resp.status_code == 200
+        result["https"] = resp.url.startswith("https://")
         if not result["online"]:
             return result
-        soup = BeautifulSoup(resp.text, "html.parser")
+
+        html = resp.text
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Title
         title_tag = soup.find("title")
-        result["title"] = title_tag.get_text(strip=True)[:80] if title_tag else ""
+        title = title_tag.get_text(strip=True) if title_tag else ""
+        result["title"] = title[:100]
+
+        # Meta Description
         meta_tag = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
-        meta = meta_tag.get("content", "")[:160] if meta_tag else ""
+        meta = meta_tag.get("content", "").strip() if meta_tag else ""
+        result["metaDescription"] = meta[:200]
+
+        # Viewport (Mobile)
         viewport = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.I)})
-        h1s = soup.find_all("h1")
-        words = len(soup.get_text(separator=" ", strip=True).split())
-        score = 0
-        if result["title"]: score += 20
-        if meta: score += 20
-        if h1s: score += 15
-        if viewport: score += 15
-        if words >= 200: score += 15
-        if words >= 500: score += 15
-        result["seoScore"] = score
-        result["metaDescription"] = meta
-        result["wordCount"] = words
-        result["hasH1"] = len(h1s) > 0
         result["hasMobile"] = viewport is not None
-    except Exception:
+
+        # H1/H2/H3
+        h1s = [h.get_text(strip=True) for h in soup.find_all("h1")]
+        h2s = soup.find_all("h2")
+        h3s = soup.find_all("h3")
+        result["h1Tags"] = h1s[:3]
+        result["hasH1"] = len(h1s) > 0
+        result["h2Count"] = len(h2s)
+        result["h3Count"] = len(h3s)
+
+        # Wörter
+        for tag in soup(["script", "style", "noscript"]):
+            tag.decompose()
+        text = soup.get_text(separator=" ", strip=True)
+        words = len(text.split())
+        result["wordCount"] = words
+
+        # Bilder
+        images = soup.find_all("img")
+        imgs_total = len(images)
+        imgs_with_alt = sum(1 for img in images if img.get("alt", "").strip())
+        result["imagesTotal"] = imgs_total
+        result["imagesWithAlt"] = imgs_with_alt
+        result["imagesWithoutAlt"] = imgs_total - imgs_with_alt
+
+        # Links
+        all_links = soup.find_all("a", href=True)
+        parsed = urlparse(resp.url)
+        domain = parsed.netloc
+        internal = external = 0
+        for link in all_links:
+            href = link["href"]
+            if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+                continue
+            lp = urlparse(href)
+            if not lp.netloc or lp.netloc == domain:
+                internal += 1
+            else:
+                external += 1
+        result["internalLinks"] = internal
+        result["externalLinks"] = external
+
+        # Schema.org / Structured Data
+        schemas = soup.find_all("script", type="application/ld+json")
+        result["hasSchema"] = len(schemas) > 0
+
+        # Open Graph
+        og_title = soup.find("meta", property="og:title")
+        result["hasOG"] = og_title is not None
+
+        # Canonical
+        canonical = soup.find("link", rel="canonical")
+        result["hasCanonical"] = canonical is not None
+
+        # Robots
+        robots = soup.find("meta", attrs={"name": re.compile(r"^robots$", re.I)})
+        robots_content = robots.get("content", "").lower() if robots else ""
+        result["robotsBlocked"] = "noindex" in robots_content
+
+        # ===== SEO SCORE (0-100, 15+ Faktoren) =====
+        score = 0
+        # Title (0-15)
+        if title:
+            score += 8
+            if 30 <= len(title) <= 65:
+                score += 7
+            elif len(title) > 10:
+                score += 3
+        # Meta Description (0-15)
+        if meta:
+            score += 8
+            if 120 <= len(meta) <= 160:
+                score += 7
+            elif len(meta) > 50:
+                score += 3
+        # H1 (0-10)
+        if h1s:
+            score += 6
+            if len(h1s) == 1:
+                score += 4
+        # Mobile (0-8)
+        if viewport:
+            score += 8
+        # Content (0-10)
+        if words >= 300:
+            score += 6
+            if words >= 800:
+                score += 4
+        elif words >= 100:
+            score += 3
+        # HTTPS (0-8)
+        if result["https"]:
+            score += 8
+        # Speed (0-8)
+        if load_time < 2:
+            score += 8
+        elif load_time < 4:
+            score += 4
+        # Images (0-6)
+        if imgs_total > 0 and imgs_with_alt == imgs_total:
+            score += 6
+        elif imgs_total > 0 and imgs_with_alt > 0:
+            score += 3
+        # Links (0-6)
+        if internal >= 3:
+            score += 3
+        if external >= 1:
+            score += 3
+        # Structured Data (0-5)
+        if result["hasSchema"]:
+            score += 5
+        # H2 structure (0-4)
+        if len(h2s) >= 2:
+            score += 4
+        elif len(h2s) >= 1:
+            score += 2
+        # OG/Canonical (0-5)
+        if result["hasOG"]:
+            score += 3
+        if result["hasCanonical"]:
+            score += 2
+
+        result["seoScore"] = min(score, 100)
+    except Exception as e:
         result["online"] = False
+        result["error"] = str(e)
     return result
 
 
