@@ -897,9 +897,18 @@ def search_businesses():
     if not query and portals == "wko":
         source_list.append(("WKO Firmen A-Z", search_wko, ("", location)))
 
-    for source_name, source_fn, source_args in source_list:
+    # PARALLEL Portal-Abfrage — alle Portale gleichzeitig
+    def _search_portal(name, fn, args):
         try:
-            found = source_fn(*source_args)
+            return name, fn(*args)
+        except Exception as e:
+            print(f"[SEARCH] Error in {name}: {e}")
+            return name, []
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        futures = [pool.submit(_search_portal, n, fn, a) for n, fn, a in source_list]
+        for f in as_completed(futures):
+            name, found = f.result()
             count = 0
             for biz in found:
                 name_key = biz["name"].lower().strip()
@@ -908,9 +917,7 @@ def search_businesses():
                     all_results.append(biz)
                     count += 1
             if count > 0:
-                sources_used.append(f"{source_name} ({count})")
-        except Exception as e:
-            print(f"[SEARCH] Error in {source_name}: {e}")
+                sources_used.append(f"{name} ({count})")
 
     # PARALLEL: Website-Discovery für Firmen ohne Website
     no_site = [b for b in all_results if not b.get("website")]
@@ -944,6 +951,13 @@ def search_businesses():
                     biz["siteOnline"] = analysis.get("online", False)
                     biz["siteTitle"] = analysis.get("title", "")
                     biz["hasWebsite"] = True
+                    biz["https"] = analysis.get("https", False)
+                    biz["mobile"] = analysis.get("hasMobile", False)
+                    biz["loadTime"] = analysis.get("loadTime", 0)
+                    biz["wordCount"] = analysis.get("wordCount", 0)
+                    biz["hasSchema"] = analysis.get("hasSchema", False)
+                    biz["metaDesc"] = analysis.get("metaDescription", "")
+                    biz["h1"] = (analysis.get("h1Tags") or [""])[0][:60]
                 except Exception:
                     pass
         for biz in all_results:

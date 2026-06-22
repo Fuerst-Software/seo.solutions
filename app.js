@@ -1010,32 +1010,42 @@ async function searchBusinesses() {
       const hasWeb = biz.hasWebsite && biz.website;
       const online = biz.siteOnline;
       const seo = biz.seoScore || 0;
-      const seoClass = !hasWeb ? '' : online ? (seo >= 70 ? 'badge-success' : seo >= 40 ? 'badge-pending' : 'badge-error') : 'badge-error';
-      const seoText = !hasWeb ? '🚫 Keine Website' : online ? `SEO ${seo}/100` : '⚠️ Offline';
-      const discovered = biz.websiteDiscovered ? ' <span class="badge badge-blue" style="font-size:9px">via Internetsuche</span>' : '';
-      const webStatus = !hasWeb
-        ? '<span style="color:var(--ff-danger);font-weight:850;font-size:12px">🚫 Keine Website gefunden — potentieller Neukunde!</span>'
-        : online
-        ? `<span style="color:var(--ff-success);font-weight:850;font-size:12px">✅ Website online</span>${discovered}${biz.siteTitle ? ` — <span style="color:var(--ff-muted);font-size:11px">${escHtml(biz.siteTitle)}</span>` : ''}`
-        : `<span style="color:var(--ff-warning);font-weight:850;font-size:12px">⚠️ Website offline</span>${discovered}`;
+      const scoreColor = !hasWeb ? '#8895b0' : !online ? 'var(--red,#ff453a)' : seo >= 70 ? 'var(--green,#30d158)' : seo >= 40 ? 'var(--orange,#ff9f0a)' : 'var(--red,#ff453a)';
 
-      return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${hasWeb && online}" data-score="${seo}" style="${!hasWeb ? 'opacity:0.55' : ''}">
-        <div class="search-result-favicon" style="background:${hasWeb && online ? (seo >= 70 ? 'var(--ff-success)' : seo >= 40 ? '#ea580c' : 'var(--ff-danger)') : 'var(--ff-muted)'};color:#fff">
+      // SEO detail pills
+      const pills = hasWeb && online ? [
+        biz.https ? '🔒 HTTPS' : '⚠️ HTTP',
+        biz.mobile ? '📱 Mobil' : '❌ Nicht mobil',
+        biz.loadTime ? `⚡ ${biz.loadTime}s` : '',
+        biz.wordCount ? `📝 ${biz.wordCount}W` : '',
+        biz.hasSchema ? '✅ Schema' : '',
+      ].filter(Boolean) : [];
+
+      return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${hasWeb && online}" data-score="${seo}" style="${!hasWeb ? 'opacity:0.5' : ''}">
+        <div class="search-result-favicon" style="background:${scoreColor}">
           ${hasWeb && online ? seo : (biz.name || '?')[0].toUpperCase()}
         </div>
         <div class="search-result-body">
-          <div class="search-result-name">${escHtml(biz.name)}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="search-result-name">${escHtml(biz.name)}</div>
             ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
-            ${biz.source ? `<span class="badge badge-blue" style="font-size:9px;padding:2px 6px">${escHtml(biz.source)}</span>` : ''}
-            <span class="badge ${seoClass}" style="font-size:10px">${seoText}</span>
+            ${biz.source ? `<span class="badge badge-blue">${escHtml(biz.source)}</span>` : ''}
           </div>
-          <div style="margin-top:4px">${webStatus}</div>
+
+          ${hasWeb && online
+            ? `<div style="margin:6px 0 4px;display:flex;gap:4px;flex-wrap:wrap">${pills.map(p => `<span class="badge" style="font-size:10px;background:var(--fill,#f5f5f7);color:var(--label-2,#333);border:0.5px solid var(--line,rgba(0,0,0,0.08))">${p}</span>`).join('')}</div>`
+            : hasWeb
+            ? '<div style="margin:4px 0;font-size:11px;color:var(--orange,#ff9f0a);font-weight:600">⚠️ Website nicht erreichbar</div>'
+            : '<div style="margin:4px 0;font-size:11px;color:var(--red,#ff453a);font-weight:600">Keine Website — potentieller Neukunde</div>'
+          }
+          ${biz.siteTitle && online ? `<div style="font-size:11px;color:var(--text-3,#666);margin-bottom:3px">${escHtml(biz.siteTitle)}</div>` : ''}
+          ${biz.websiteDiscovered ? '<span class="badge badge-blue" style="font-size:9px">Website via Recherche gefunden</span>' : ''}
+
           <div class="search-result-meta">
             ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
-            ${biz.phone ? `<span>📞 ${escHtml(biz.phone)}</span>` : ''}
-            ${biz.email ? `<span>✉ ${escHtml(biz.email)}</span>` : ''}
-            ${biz.website ? `<span class="search-result-url">🌐 ${escHtml(biz.website)}</span>` : ''}
+            ${biz.phone ? `<span>📞 <a href="tel:${escHtml(biz.phone)}">${escHtml(biz.phone)}</a></span>` : ''}
+            ${biz.email ? `<span>✉ <a href="mailto:${escHtml(biz.email)}">${escHtml(biz.email)}</a></span>` : ''}
+            ${biz.website ? `<span>🌐 <a href="${escHtml(biz.website)}" target="_blank">${escHtml(biz.website.replace(/^https?:\/\/(www\.)?/,'').slice(0,35))}</a></span>` : ''}
           </div>
         </div>
         <div class="search-result-actions">
@@ -1043,7 +1053,7 @@ async function searchBusinesses() {
             onclick='saveFirma(${i})' ${saved ? 'disabled' : ''}>
             ${saved ? '✓ Gespeichert' : '★ Speichern'}
           </button>
-          ${hasWeb && online ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>Details</button>` : ''}
+          ${hasWeb && online ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>SEO Details</button>` : ''}
         </div>
       </div>`;
     }).join('');
