@@ -271,12 +271,12 @@ def search_wko(query, location):
 
 
 def search_osm(query, location, radius):
-    """OpenStreetMap / Overpass + Nominatim"""
+    """OpenStreetMap / Overpass — echte Firmendaten mit Kontaktinfos"""
     results = []
     try:
         geo_resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": location, "format": "json", "limit": 1, "addressdetails": 1},
+            params={"q": location, "format": "json", "limit": 1},
             headers=OSM_HEADERS,
             timeout=10,
         )
@@ -288,32 +288,9 @@ def search_osm(query, location, radius):
         lon = float(geo_data[0]["lon"])
         print(f"[OSM] Location: {lat}, {lon} — Radius: {radius}m")
 
-        # Nominatim POI-Suche
-        nom_resp = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": f"{query} {location}", "format": "json", "limit": 20, "addressdetails": 1},
-            headers=OSM_HEADERS,
-            timeout=10,
-        )
-        seen = set()
-        for place in nom_resp.json():
-            name = place.get("display_name", "").split(",")[0].strip()
-            if not is_valid_business(name):
-                continue
-            key = name.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            addr = place.get("display_name", "")
-            results.append({
-                "name": name, "address": addr,
-                "phone": "", "website": "", "email": "",
-                "category": query, "rating": None, "source": "Nominatim",
-            })
-
-        # Overpass: craft/shop/office/amenity im Umkreis
+        # Breite Suche: alle benannten Betriebe/Geschäfte/Büros im Umkreis
         overpass_query = f"""
-        [out:json][timeout:25];
+        [out:json][timeout:30];
         (
           nwr["name"]["craft"](around:{radius},{lat},{lon});
           nwr["name"]["shop"](around:{radius},{lat},{lon});
@@ -321,38 +298,45 @@ def search_osm(query, location, radius):
           nwr["name"]["amenity"](around:{radius},{lat},{lon});
           nwr["name"]["company"](around:{radius},{lat},{lon});
           nwr["name"]["industrial"](around:{radius},{lat},{lon});
+          nwr["name"]["trade"](around:{radius},{lat},{lon});
+          nwr["name"]["brand"](around:{radius},{lat},{lon});
         );
-        out center 100;
+        out center 300;
         """
+        print(f"[OSM] Querying Overpass...")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
             headers=OSM_HEADERS,
-            timeout=30,
+            timeout=35,
         )
         ov_data = ov_resp.json()
+        elements = ov_data.get("elements", [])
+        print(f"[OSM] Raw elements: {len(elements)}")
 
         query_lower = query.lower()
         query_parts = query_lower.split()
+        seen = set()
 
-        for el in ov_data.get("elements", []):
+        for el in elements:
             tags = el.get("tags", {})
             name = tags.get("name", "")
             if not is_valid_business(name):
                 continue
 
             all_vals = " ".join(str(v) for v in tags.values()).lower()
-            if not any(p in all_vals or p in name.lower() for p in query_parts):
+            name_lower = name.lower()
+            if not any(p in all_vals or p in name_lower for p in query_parts):
                 continue
 
-            key = name.lower().strip()
+            key = name_lower.strip()
             if key in seen:
                 continue
             seen.add(key)
 
             category = (
                 tags.get("craft") or tags.get("shop") or tags.get("office")
-                or tags.get("amenity") or ""
+                or tags.get("amenity") or tags.get("industrial") or ""
             )
             addr = " ".join(filter(None, [
                 tags.get("addr:street", ""), tags.get("addr:housenumber", ""),
@@ -367,9 +351,43 @@ def search_osm(query, location, radius):
                 "category": category.replace("_", " ").title() if category else query,
                 "rating": None, "source": "OpenStreetMap",
             })
-        print(f"[OSM] Found: {len(results)} results")
+        print(f"[OSM] Matched: {len(results)} results")
     except Exception as e:
         print(f"[OSM] Error: {e}")
+    return results
+
+
+def search_herold_api(query, location):
+    """Herold.at — versucht JSON-API Endpunkt"""
+    results = []
+    try:
+        url = "https://www.herold.at/api/search"
+        params = {"what": query, "where": location, "category": "gelbe-seiten"}
+        print(f"[Herold API] Trying: {url}")
+        resp = requests.get(url, params=params, headers=SEARCH_HEADERS, timeout=12)
+        print(f"[Herold API] Status: {resp.status_code}")
+        if resp.status_code == 200:
+            try:
+                data = resp.json()
+                for item in (data.get("results") or data.get("items") or data.get("data") or []):
+                    name = item.get("name") or item.get("title", "")
+                    if not is_valid_business(name):
+                        continue
+                    results.append({
+                        "name": name,
+                        "address": item.get("address") or item.get("street", "") + " " + item.get("city", ""),
+                        "phone": item.get("phone") or item.get("tel", ""),
+                        "website": item.get("website") or item.get("url", ""),
+                        "email": item.get("email", ""),
+                        "category": item.get("category") or query,
+                        "rating": item.get("rating"),
+                        "source": "Herold.at",
+                    })
+            except (ValueError, KeyError):
+                pass
+        print(f"[Herold API] Found: {len(results)}")
+    except Exception as e:
+        print(f"[Herold API] Error: {e}")
     return results
 
 
@@ -387,30 +405,44 @@ def search_businesses():
     seen_names = set()
     errors = []
 
-    # Alle Portale parallel-ish abfragen
-    for source_fn, source_args in [
-        (search_herold, (query, location)),
-        (search_firmenabc, (query, location)),
-        (search_wko, (query, location)),
-        (search_osm, (query, location, radius)),
+    # Alle Portale abfragen
+    sources_used = []
+    for source_name, source_fn, source_args in [
+        ("Herold.at", search_herold, (query, location)),
+        ("Herold API", search_herold_api, (query, location)),
+        ("FirmenABC.at", search_firmenabc, (query, location)),
+        ("WKO Firmen A-Z", search_wko, (query, location)),
+        ("OpenStreetMap", search_osm, (query, location, radius)),
     ]:
         try:
-            results = source_fn(*source_args)
-            for biz in results:
+            found = source_fn(*source_args)
+            count = 0
+            for biz in found:
                 name_key = biz["name"].lower().strip()
                 if name_key not in seen_names:
                     seen_names.add(name_key)
                     all_results.append(biz)
+                    count += 1
+            if count > 0:
+                sources_used.append(f"{source_name} ({count})")
         except Exception as e:
-            errors.append(str(e))
+            errors.append(f"{source_name}: {e}")
+            print(f"[SEARCH] Error in {source_name}: {e}")
 
-    # Sortierung: Firmen mit Website zuerst, dann mit Telefon
-    all_results.sort(key=lambda b: (not b.get("website"), not b.get("phone"), b["name"]))
+    # Sortierung: Firmen mit Website+Telefon zuerst
+    all_results.sort(key=lambda b: (
+        not b.get("website"),
+        not b.get("phone"),
+        not b.get("email"),
+        b["name"],
+    ))
+
+    print(f"[SEARCH] Total: {len(all_results)} from: {', '.join(sources_used) or 'keine Quellen'}")
 
     return jsonify({
         "businesses": all_results[:60],
         "count": len(all_results),
-        "sources": ["Herold.at", "FirmenABC.at", "WKO Firmen A-Z", "OpenStreetMap", "Nominatim"],
+        "sources": sources_used or ["Keine Ergebnisse"],
     })
 
 
