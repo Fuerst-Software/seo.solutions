@@ -341,19 +341,26 @@ def search_osm(query, location, radius):
                     else:
                         tag_filters.append(f'nwr["{tag_key}"]["name"](around:{radius},{lat},{lon});')
 
-        # Immer auch Name-basierte Suche
-        tag_filters.append(f'nwr["name"~"{query_lower}",i](around:{radius},{lat},{lon});')
+        # Name-basierte Suche (node+way statt nwr — viel schneller!)
+        tag_filters.append(f'node["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+        tag_filters.append(f'node["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
+        tag_filters.append(f'node["name"~"{query_lower}",i]["office"](around:{radius},{lat},{lon});')
+        tag_filters.append(f'way["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
 
-        # Fallback: alle Betriebe wenn keine Tags gefunden
-        if len(tag_filters) <= 1:
-            tag_filters.append(f'nwr["craft"]["name"](around:{radius},{lat},{lon});')
-            tag_filters.append(f'nwr["shop"]["name"](around:{radius},{lat},{lon});')
-            tag_filters.append(f'nwr["office"]["name"](around:{radius},{lat},{lon});')
+        # Fallback: alle Handwerksbetriebe wenn keine Tags gefunden
+        if len(tag_filters) <= 4:
+            tag_filters.append(f'node["craft"]["name"](around:{radius},{lat},{lon});')
+            tag_filters.append(f'way["craft"]["name"](around:{radius},{lat},{lon});')
+
+        # node/way statt nwr — nwr verursacht Timeouts!
+        tag_filters = [f.replace('nwr[', 'node[') for f in tag_filters]
+        tag_filters_way = [f.replace('node[', 'way[') for f in tag_filters if 'node[' in f]
 
         overpass_query = f"""
         [out:json][timeout:30];
         (
           {"".join(tag_filters)}
+          {"".join(tag_filters_way)}
         );
         out center 200;
         """
@@ -391,9 +398,11 @@ def search_osm(query, location, radius):
 
             results.append({
                 "name": name, "address": addr or location,
-                "phone": tags.get("phone") or tags.get("contact:phone", ""),
-                "website": tags.get("website") or tags.get("contact:website", ""),
+                "phone": tags.get("phone") or tags.get("contact:phone") or tags.get("mobile") or tags.get("contact:mobile", ""),
+                "website": tags.get("website") or tags.get("contact:website") or tags.get("url", ""),
                 "email": tags.get("email") or tags.get("contact:email", ""),
+                "fax": tags.get("fax", ""),
+                "operator": tags.get("operator", ""),
                 "category": category.replace("_", " ").title() if category else query,
                 "rating": None, "source": "OpenStreetMap",
             })
