@@ -989,11 +989,12 @@ async function searchBusinesses() {
       const seo = biz.seoScore || 0;
       const seoClass = !hasWeb ? '' : online ? (seo >= 70 ? 'badge-success' : seo >= 40 ? 'badge-pending' : 'badge-error') : 'badge-error';
       const seoText = !hasWeb ? '🚫 Keine Website' : online ? `SEO ${seo}/100` : '⚠️ Offline';
+      const discovered = biz.websiteDiscovered ? ' <span class="badge badge-blue" style="font-size:9px">via Internetsuche</span>' : '';
       const webStatus = !hasWeb
-        ? '<span style="color:var(--ff-danger);font-weight:850;font-size:12px">🚫 Keine Website vorhanden</span>'
+        ? '<span style="color:var(--ff-danger);font-weight:850;font-size:12px">🚫 Keine Website gefunden — potentieller Neukunde!</span>'
         : online
-        ? `<span style="color:var(--ff-success);font-weight:850;font-size:12px">✅ Website online</span>${biz.siteTitle ? ` — <span style="color:var(--ff-muted);font-size:11px">${escHtml(biz.siteTitle)}</span>` : ''}`
-        : '<span style="color:var(--ff-danger);font-weight:850;font-size:12px">⚠️ Website offline/nicht erreichbar</span>';
+        ? `<span style="color:var(--ff-success);font-weight:850;font-size:12px">✅ Website online</span>${discovered}${biz.siteTitle ? ` — <span style="color:var(--ff-muted);font-size:11px">${escHtml(biz.siteTitle)}</span>` : ''}`
+        : `<span style="color:var(--ff-warning);font-weight:850;font-size:12px">⚠️ Website offline</span>${discovered}`;
 
       return `<div class="search-result-item" id="search-result-${i}" style="${!hasWeb ? 'opacity:0.6' : ''}">
         <div class="search-result-favicon" style="background:${hasWeb && online ? (seo >= 70 ? 'var(--ff-success)' : seo >= 40 ? '#ea580c' : 'var(--ff-danger)') : 'var(--ff-muted)'};color:#fff">

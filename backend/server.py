@@ -72,6 +72,72 @@ SEARCH_HEADERS = {
 OSM_HEADERS = {"User-Agent": "seo.solutions/1.0 (contact@fuerst-software.com)"}
 
 
+def discover_website(name, location):
+    """Sucht per DuckDuckGo nach der Website einer Firma"""
+    try:
+        search_q = f"{name} {location} website"
+        resp = requests.get(
+            "https://html.duckduckgo.com/html/",
+            params={"q": search_q},
+            headers=SEARCH_HEADERS,
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return ""
+        soup = BeautifulSoup(resp.text, "html.parser")
+        name_parts = name.lower().split()
+
+        for a in soup.select("a.result__a, a.result__url"):
+            href = a.get("href", "")
+            text = a.get_text(strip=True).lower()
+            if not href.startswith("http"):
+                if "uddg=" in href:
+                    from urllib.parse import parse_qs
+                    parsed = parse_qs(href.split("?", 1)[-1] if "?" in href else "")
+                    href = parsed.get("uddg", [""])[0]
+                else:
+                    continue
+            if not href.startswith("http"):
+                continue
+            skip = ["facebook.com", "instagram.com", "linkedin.com", "twitter.com",
+                    "youtube.com", "wko.at", "herold.at", "firmenabc.at", "google.",
+                    "wikipedia.", "yelp.", "gelbeseiten.", "duckduckgo."]
+            if any(s in href.lower() for s in skip):
+                continue
+            if any(p in href.lower() or p in text for p in name_parts[:2] if len(p) > 3):
+                return href
+        for a in soup.select("a.result__a"):
+            href = a.get("href", "")
+            if "uddg=" in href:
+                from urllib.parse import parse_qs
+                parsed = parse_qs(href.split("?", 1)[-1] if "?" in href else "")
+                href = parsed.get("uddg", [""])[0]
+            if href.startswith("http") and not any(s in href.lower() for s in ["facebook", "instagram", "linkedin", "twitter", "youtube", "wko.at", "herold.at", "wikipedia", "google"]):
+                return href
+    except Exception as e:
+        print(f"[DISCOVER] Error for {name}: {e}")
+    return ""
+
+
+def check_website_on_portals(name, location):
+    """Prüft Herold und WKO Detail-Seite nach Website"""
+    try:
+        q = name.lower().replace(" ", "-").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+        url = f"https://www.herold.at/gelbe-seiten/was_{q}/wo_{location.lower().replace(' ', '-')}/"
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=8)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("http") and "herold.at" not in href and "google" not in href:
+                    name_parts = name.lower().split()
+                    if any(p in href.lower() for p in name_parts[:2] if len(p) > 3):
+                        return href
+    except Exception:
+        pass
+    return ""
+
+
 JUNK_NAMES = {
     "alle unternehmen", "suchergebnis", "ihre suche", "ergebnisse", "treffer",
     "keine ergebnisse", "kein treffer", "mehr anzeigen", "weitere ergebnisse",
@@ -523,9 +589,23 @@ def search_businesses():
         except Exception as e:
             print(f"[SEARCH] Error in {source_name}: {e}")
 
+    # Website-Discovery für Firmen ohne Website
+    no_site = [b for b in all_results if not b.get("website")]
+    if no_site:
+        print(f"[SEARCH] Discovering websites for {len(no_site)} firms without website...")
+        for biz in no_site[:10]:
+            found_url = discover_website(biz["name"], location)
+            if not found_url:
+                found_url = check_website_on_portals(biz["name"], location)
+            if found_url:
+                biz["website"] = found_url
+                biz["websiteDiscovered"] = True
+                print(f"[DISCOVER] Found: {biz['name']} → {found_url}")
+
     # Sofortige Website-Analyse für alle Ergebnisse
     if analyze:
-        print(f"[SEARCH] Analyzing {sum(1 for b in all_results if b.get('website'))} websites...")
+        with_site = [b for b in all_results if b.get("website")]
+        print(f"[SEARCH] Analyzing {len(with_site)} websites...")
         for biz in all_results:
             website = biz.get("website", "")
             if website:
