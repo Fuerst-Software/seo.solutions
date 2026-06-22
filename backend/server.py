@@ -821,10 +821,13 @@ def quick_analyze(url):
 @app.post("/api/search/businesses")
 def search_businesses():
     body = request.get_json() or {}
-    query = body.get("query", "").strip()       # Branche — OPTIONAL
-    location = body.get("location", "").strip()  # Ort — PFLICHT
+    query = body.get("query", "").strip()
+    location = body.get("location", "").strip()
     radius = body.get("radius", 5000)
     analyze = body.get("analyze", True)
+    discover = body.get("discover", True)
+    max_results = body.get("maxResults", 50)
+    portals = body.get("portals", "all")
 
     if not location:
         return jsonify({"error": "Ort / Stadt ist erforderlich"}), 400
@@ -832,15 +835,20 @@ def search_businesses():
     all_results = []
     seen_names = set()
 
-    # Alle Portale abfragen — wenn keine Branche, hole ALLE Firmen
+    # Portal-Auswahl
     sources_used = []
     source_list = []
-    if query:
+    if portals in ("all", "osm"):
+        source_list.append(("OpenStreetMap", search_osm, (query or "", location, radius)))
+    if portals in ("all", "wko") and query:
         source_list.append(("WKO Firmen A-Z", search_wko, (query, location)))
-    source_list.append(("OpenStreetMap", search_osm, (query or "", location, radius)))
-    if query:
+    if portals in ("all", "herold") and query:
         source_list.append(("Herold.at", search_herold, (query, location)))
+    if portals in ("all", "firmenabc") and query:
         source_list.append(("FirmenABC.at", search_firmenabc, (query, location)))
+    # Wenn kein Query aber spezifisches Portal gewählt
+    if not query and portals == "wko":
+        source_list.append(("WKO Firmen A-Z", search_wko, ("", location)))
 
     for source_name, source_fn, source_args in source_list:
         try:
@@ -859,7 +867,7 @@ def search_businesses():
 
     # Tiefe Website-Discovery für ALLE Firmen ohne Website
     no_site = [b for b in all_results if not b.get("website")]
-    if no_site:
+    if no_site and discover:
         print(f"[SEARCH] Deep website discovery for {len(no_site)} firms...")
         for biz in no_site:
             found_url = deep_discover_website(
@@ -900,9 +908,11 @@ def search_businesses():
 
     print(f"[SEARCH] Total: {len(all_results)} from: {', '.join(sources_used) or 'keine Quellen'}")
 
+    limit = min(max_results, len(all_results)) if max_results < 500 else len(all_results)
     return jsonify({
-        "businesses": all_results[:80],
+        "businesses": all_results[:limit],
         "count": len(all_results),
+        "showing": limit,
         "sources": sources_used or ["Keine Ergebnisse"],
     })
 

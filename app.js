@@ -94,15 +94,15 @@ function renderDashboard() {
 }
 
 function dashQuickSearch() {
-  const q = document.getElementById('dashSearchQuery').value.trim();
-  const loc = document.getElementById('dashSearchLocation').value.trim();
+  const q = document.getElementById('dashSearchQuery')?.value.trim() || '';
+  const loc = document.getElementById('dashSearchLocation')?.value.trim() || '';
   if (!loc) { showToast('Bitte Ort eingeben.', 'error'); return; }
   navigateTo('search');
   setTimeout(() => {
-    document.getElementById('searchQuery').value = q;
     document.getElementById('searchLocation').value = loc;
+    document.getElementById('searchQuery').value = q;
     searchBusinesses();
-  }, 50);
+  }, 80);
 }
 
 function updateNavBadges() {
@@ -942,23 +942,47 @@ function renderSearchPage() {
   }
 }
 
+let currentFilter = 'all';
+function filterResults(f) {
+  currentFilter = f;
+  document.querySelectorAll('#searchResultsHeader .btn').forEach(b => b.className = 'btn btn-sm btn-ghost');
+  document.getElementById('filter' + {all:'All',website:'Website',nowebsite:'NoWebsite',good:'Good'}[f]).className = 'btn btn-sm btn-secondary';
+  const items = document.querySelectorAll('.search-result-item');
+  items.forEach(el => {
+    const hasWeb = el.dataset.haswebsite === 'true';
+    const score = parseInt(el.dataset.score || '0', 10);
+    let show = true;
+    if (f === 'website') show = hasWeb;
+    if (f === 'nowebsite') show = !hasWeb;
+    if (f === 'good') show = score >= 70;
+    el.style.display = show ? '' : 'none';
+  });
+}
+
 async function searchBusinesses() {
   const query = document.getElementById('searchQuery').value.trim();
   const location = document.getElementById('searchLocation').value.trim();
-  const radiusKm = parseInt(document.getElementById('searchRadius').value, 10) || 5;
+  const radiusKm = parseInt(document.getElementById('searchRadius').value, 10) || 10;
+  const maxResults = parseInt(document.getElementById('searchMaxResults').value, 10) || 50;
+  const portals = document.getElementById('searchPortals').value;
+  const doAnalyze = document.getElementById('searchAnalyze').checked;
+  const doDiscover = document.getElementById('searchDiscover').checked;
   if (!location) { showToast('Bitte Ort / Stadt eingeben.', 'error'); return; }
 
   const results = document.getElementById('searchResults');
-  results.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;gap:12px;padding:40px;color:var(--ff-blue)">
-    <div class="spinner" style="border-color:rgba(11,92,255,.3);border-top-color:var(--ff-blue)"></div>
-    Firmen werden gesucht...
+  document.getElementById('searchResultsHeader').style.display = 'none';
+  results.innerHTML = `<div class="card"><div style="display:flex;flex-direction:column;align-items:center;gap:12px;padding:48px;color:var(--ff-blue)">
+    <div class="spinner" style="width:24px;height:24px;border-width:3px;border-color:rgba(11,92,255,.2);border-top-color:var(--ff-blue)"></div>
+    <strong style="font-size:15px">Firmen werden gesucht...</strong>
+    <span style="font-size:12px;color:var(--ff-muted)">Portale: ${portals === 'all' ? 'Alle' : portals.toUpperCase()} · Umkreis: ${radiusKm}km · Max: ${maxResults}</span>
+  </div></div>
   </div>`;
 
   try {
     const res = await fetch(API_BASE + '/api/search/businesses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, location, radius: radiusKm * 1000 }),
+      body: JSON.stringify({ query, location, radius: radiusKm * 1000, maxResults, portals, analyze: doAnalyze, discover: doDiscover }),
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
@@ -995,7 +1019,7 @@ async function searchBusinesses() {
         ? `<span style="color:var(--ff-success);font-weight:850;font-size:12px">✅ Website online</span>${discovered}${biz.siteTitle ? ` — <span style="color:var(--ff-muted);font-size:11px">${escHtml(biz.siteTitle)}</span>` : ''}`
         : `<span style="color:var(--ff-warning);font-weight:850;font-size:12px">⚠️ Website offline</span>${discovered}`;
 
-      return `<div class="search-result-item" id="search-result-${i}" style="${!hasWeb ? 'opacity:0.6' : ''}">
+      return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${hasWeb && online}" data-score="${seo}" style="${!hasWeb ? 'opacity:0.55' : ''}">
         <div class="search-result-favicon" style="background:${hasWeb && online ? (seo >= 70 ? 'var(--ff-success)' : seo >= 40 ? '#ea580c' : 'var(--ff-danger)') : 'var(--ff-muted)'};color:#fff">
           ${hasWeb && online ? seo : (biz.name || '?')[0].toUpperCase()}
         </div>
@@ -1024,13 +1048,26 @@ async function searchBusinesses() {
       </div>`;
     }).join('');
 
-    state.stats.searches = (state.stats.searches || 0) + 1;
-    state.stats.analyzed = (state.stats.analyzed || 0) + businesses.filter(b => b.hasWebsite).length;
-    addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Firmen, ${businesses.filter(b=>b.siteOnline).length} mit Website`, status: 'success', color: '#0b5cff' });
-    saveState();
+    // Info-Leiste
     const withSite = businesses.filter(b => b.siteOnline).length;
     const noSite = businesses.filter(b => !b.hasWebsite).length;
-    showToast(`${businesses.length} Firmen — ${withSite} mit Website, ${noSite} ohne`, 'success');
+    const good = businesses.filter(b => (b.seoScore||0) >= 70).length;
+    const discovered = businesses.filter(b => b.websiteDiscovered).length;
+    document.getElementById('searchResultsHeader').style.display = '';
+    document.getElementById('searchResultsInfo').innerHTML = `
+      <strong>${businesses.length}</strong> Firmen gefunden ·
+      <span style="color:var(--ff-success)">${withSite} mit Website</span> ·
+      <span style="color:var(--ff-danger)">${noSite} ohne</span> ·
+      <span style="color:var(--ff-blue)">${good} SEO 70+</span>
+      ${discovered ? ` · <span style="color:var(--ff-blue)">${discovered} entdeckt</span>` : ''}
+      ${data.showing < data.count ? ` · <span style="color:var(--ff-muted)">${data.count} total, ${data.showing} angezeigt</span>` : ''}
+    `;
+
+    state.stats.searches = (state.stats.searches || 0) + 1;
+    state.stats.analyzed = (state.stats.analyzed || 0) + withSite;
+    addActivity({ title: `Firmensuche: ${location}${query ? ' · ' + query : ''}`, meta: `${businesses.length} Firmen, ${withSite} mit Website`, status: 'success', color: '#0b5cff' });
+    saveState();
+    showToast(`${businesses.length} Firmen gefunden!`, 'success');
   } catch (e) {
     results.innerHTML = `<div class="seo-check-item fail" style="margin:16px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
     showToast('Fehler bei der Suche: ' + e.message, 'error');
