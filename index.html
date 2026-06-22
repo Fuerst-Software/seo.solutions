@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>seo.solutions — AI SEO Dashboard</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-mark">S</div>
+      <div class="logo-text">
+        <strong>seo.solutions</strong>
+        <span>AI Platform</span>
+      </div>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="sidebar-section-label">Übersicht</div>
+      <a href="#" class="nav-item active" data-page="dashboard">
+        <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        <span>Dashboard</span>
+      </a>
+      <a href="#" class="nav-item" data-page="websites">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+        <span>Websites</span>
+        <span class="nav-badge" id="navBadgeWebsites" style="display:none">0</span>
+      </a>
+
+      <div class="sidebar-section-label">AI Content</div>
+      <a href="#" class="nav-item" data-page="zones">
+        <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+        <span>Content Zones</span>
+        <span class="nav-badge" id="navBadgeZones" style="display:none">0</span>
+      </a>
+      <a href="#" class="nav-item" data-page="ai-lab">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 9.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <span>AI Labor</span>
+      </a>
+      <a href="#" class="nav-item" data-page="ai-jobs">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+        <span>AI Jobs</span>
+      </a>
+
+      <div class="sidebar-section-label">Auswertung</div>
+      <a href="#" class="nav-item" data-page="analytics">
+        <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
+        <span>Analytics</span>
+      </a>
+      <a href="#" class="nav-item" data-page="seo-check">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+        <span>SEO Checker</span>
+      </a>
+
+      <div class="sidebar-section-label">Integration</div>
+      <a href="#" class="nav-item" data-page="snippet">
+        <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        <span>Embed Snippet</span>
+      </a>
+      <a href="#" class="nav-item" data-page="settings">
+        <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-.36-2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+        <span>Einstellungen</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="ai-engine-status">
+        <div class="status-pulse"></div>
+        <div>
+          <strong>AI Engine</strong>
+          <span id="aiEngineModel">claude-opus-4-8</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== MAIN ===== -->
+  <div class="main-area">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <button class="menu-toggle" id="menuToggle">
+        <svg viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+      </button>
+      <div class="topbar-title" id="pageTitle">Dashboard</div>
+      <div class="topbar-actions">
+        <div class="topbar-search">
+          <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+          Suchen...
+        </div>
+        <button class="btn btn-primary" id="runAiBtn">
+          <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+          AI starten
+        </button>
+        <div class="user-chip">
+          <div class="user-avatar">F</div>
+          <span>Fürst</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Pages -->
+    <div class="page-content">
+
+      <!-- ============ DASHBOARD ============ -->
+      <section class="page active" id="page-dashboard">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">
+              <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+              Übersicht
+            </div>
+            <h1>Willkommen zurück</h1>
+            <p>Dein KI-gesteuertes SEO-System läuft automatisch im Hintergrund.</p>
+          </div>
+          <button class="btn btn-primary btn-lg" onclick="navigateTo('ai-lab')">
+            <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+            AI Labor öffnen
+          </button>
+        </div>
+
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card">
+            <div class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
+            <div class="stat-body">
+              <span class="stat-label">Websites</span>
+              <span class="stat-value" id="statWebsites">0</span>
+              <span class="stat-sub">verbunden</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon navy"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></div>
+            <div class="stat-body">
+              <span class="stat-label">Content Zones</span>
+              <span class="stat-value" id="statZones">0</span>
+              <span class="stat-sub">definiert</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
+            <div class="stat-body">
+              <span class="stat-label">AI Jobs heute</span>
+              <span class="stat-value" id="statJobs">0</span>
+              <span class="stat-sub">ausgeführt</span>
+            </div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon orange"><svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg></div>
+            <div class="stat-body">
+              <span class="stat-label">Texte generiert</span>
+              <span class="stat-value" id="statGenerated">0</span>
+              <span class="stat-sub">gesamt</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3>Letzte AI-Aktivitäten</h3>
+              <span class="badge badge-live">Live</span>
+            </div>
+            <div class="activity-list" id="activityList">
+              <div class="empty-state" style="padding:28px">
+                <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+                <h4>Noch keine Aktivitäten</h4>
+                <p>Sobald die AI arbeitet, siehst du hier alle Aktionen in Echtzeit.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header"><h3>Einrichtung</h3></div>
+            <div class="quickstart-steps" id="quickstartSteps">
+              <div class="step" id="step1">
+                <div class="step-number"><span>1</span></div>
+                <div class="step-body">
+                  <strong>Website verbinden</strong>
+                  <p>Domain eintragen, API-Key erhalten.</p>
+                </div>
+                <button class="btn btn-sm btn-primary" onclick="navigateTo('websites')">Starten</button>
+              </div>
+              <div class="step" id="step2">
+                <div class="step-number"><span>2</span></div>
+                <div class="step-body">
+                  <strong>Snippet einbinden</strong>
+                  <p>JS-Code in den &lt;head&gt; einfügen.</p>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="navigateTo('snippet')">Snippet</button>
+              </div>
+              <div class="step" id="step3">
+                <div class="step-number"><span>3</span></div>
+                <div class="step-body">
+                  <strong>Content Zones anlegen</strong>
+                  <p>Bereiche markieren, die die KI ändert.</p>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="navigateTo('zones')">Zones</button>
+              </div>
+              <div class="step" id="step4">
+                <div class="step-number"><span>4</span></div>
+                <div class="step-body">
+                  <strong>AI automatisch starten</strong>
+                  <p>Inhalte nach Zeitplan aktualisieren.</p>
+                </div>
+                <button class="btn btn-sm btn-secondary" onclick="navigateTo('ai-jobs')">Planen</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ WEBSITES ============ -->
+      <section class="page" id="page-websites">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">Integration</div>
+            <h1>Websites</h1>
+            <p>Verbinde deine Websites mit dem AI-System.</p>
+          </div>
+          <button class="btn btn-primary" onclick="openModal('addWebsiteModal')">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Website hinzufügen
+          </button>
+        </div>
+        <div class="card" id="websitesCard">
+          <div class="empty-state" id="websitesEmpty">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>
+            <h4>Noch keine Website verbunden</h4>
+            <p>Füge deine erste Website hinzu, um das AI-System zu aktivieren.</p>
+            <button class="btn btn-primary" onclick="openModal('addWebsiteModal')">Website hinzufügen</button>
+          </div>
+          <div id="websitesList" style="display:none"></div>
+        </div>
+      </section>
+
+      <!-- ============ CONTENT ZONES ============ -->
+      <section class="page" id="page-zones">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">AI Content</div>
+            <h1>Content Zones</h1>
+            <p>Definiere welche Bereiche die AI automatisch aktualisiert.</p>
+          </div>
+          <button class="btn btn-primary" onclick="openAddZoneModal()">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Zone hinzufügen
+          </button>
+        </div>
+        <div class="zones-grid" id="zonesGrid">
+          <div class="card" style="grid-column:1/-1">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+              <h4>Keine Content Zones</h4>
+              <p>Füge zuerst eine Website hinzu und definiere dann die Bereiche, die die KI verändern soll.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ AI LABOR ============ -->
+      <section class="page" id="page-ai-lab">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">KI-gestützt</div>
+            <h1>AI Labor</h1>
+            <p>Texte, Headlines, Meta-Beschreibungen — direkt mit Claude AI generieren.</p>
+          </div>
+        </div>
+
+        <div id="aiRunningBanner" style="display:none" class="ai-running-banner">
+          <div class="spinner"></div>
+          Claude AI denkt nach...
+        </div>
+
+        <div class="dashboard-grid" style="margin-bottom:16px">
+          <div class="card">
+            <div class="card-header"><h3>Inhalt generieren</h3></div>
+
+            <div class="form-group">
+              <label class="form-label">Content Zone (optional)</label>
+              <select class="form-input" id="labZoneSelect">
+                <option value="">— Freie Eingabe —</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Typ</label>
+              <div class="tone-selector" id="contentTypeSelector">
+                <button class="tone-btn active" data-type="text">Text</button>
+                <button class="tone-btn" data-type="headline">Headline</button>
+                <button class="tone-btn" data-type="meta">Meta</button>
+                <button class="tone-btn" data-type="alt">Alt-Text</button>
+                <button class="tone-btn" data-type="title">Seitentitel</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Keywords</label>
+              <input type="text" class="form-input" id="labKeywords" placeholder="z.B. SEO, Webdesign, Österreich" />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Ton</label>
+              <div class="tone-selector" id="toneSelector">
+                <button class="tone-btn active" data-tone="professionell">Professionell</button>
+                <button class="tone-btn" data-tone="freundlich">Freundlich</button>
+                <button class="tone-btn" data-tone="überzeugend">Überzeugend</button>
+                <button class="tone-btn" data-tone="informativ">Informativ</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Aufgabe / Anweisung</label>
+              <textarea class="form-input" id="labPrompt" rows="3" placeholder="z.B. Schreibe eine SEO-optimierte Einleitung über Webdesign in Salzburg..."></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Aktueller Inhalt (zum Verbessern)</label>
+              <textarea class="ai-lab-input-area" id="labCurrentContent" placeholder="Füge hier den aktuellen Inhalt ein, den die AI verbessern soll..."></textarea>
+            </div>
+
+            <button class="btn btn-primary btn-lg" id="labGenerateBtn" style="width:100%" onclick="labGenerate()">
+              <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+              Mit Claude AI generieren
+            </button>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="card" style="flex:1">
+              <div class="card-header">
+                <h3>AI Ergebnis</h3>
+                <div style="display:flex;gap:8px">
+                  <button class="btn btn-sm btn-secondary" id="copyResultBtn" onclick="copyResult()" style="display:none">Kopieren</button>
+                  <button class="btn btn-sm btn-success" id="applyResultBtn" onclick="applyResult()" style="display:none">Anwenden</button>
+                </div>
+              </div>
+              <div class="ai-result-box" id="aiResultBox">
+                <div style="color:var(--ff-muted);font-size:13px;display:flex;align-items:center;gap:8px">
+                  <svg viewBox="0 0 24 24" style="width:18px;height:18px;fill:var(--ff-muted)"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+                  Ergebnis erscheint hier nach der Generierung.
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>SEO Schnell-Check</h3></div>
+              <div class="seo-check-list" id="quickSeoCheck">
+                <div style="color:var(--ff-muted);font-size:13px;text-align:center;padding:16px">
+                  Generiere zuerst einen Text.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <h3>Generierungshistorie</h3>
+            <button class="btn btn-sm btn-ghost" onclick="clearLabHistory()">Leeren</button>
+          </div>
+          <div id="labHistory" style="display:flex;flex-direction:column;gap:8px">
+            <div style="color:var(--ff-muted);font-size:13px;text-align:center;padding:20px">
+              Noch keine Generierungen in dieser Sitzung.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ AI JOBS ============ -->
+      <section class="page" id="page-ai-jobs">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">Automation</div>
+            <h1>AI Jobs</h1>
+            <p>Automatisiere die Inhaltserneuerung nach Zeitplan.</p>
+          </div>
+          <button class="btn btn-primary" onclick="openCreateJobModal()">
+            <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+            Job erstellen
+          </button>
+        </div>
+        <div class="card">
+          <div class="table-wrap">
+            <table class="data-table" id="jobsTable">
+              <thead>
+                <tr>
+                  <th>Zone</th>
+                  <th>Website</th>
+                  <th>Typ</th>
+                  <th>Zeitplan</th>
+                  <th>Status</th>
+                  <th>Letzter Lauf</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody id="jobsBody">
+                <tr class="empty-table-row"><td colspan="7">Noch keine AI Jobs konfiguriert.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ ANALYTICS ============ -->
+      <section class="page" id="page-analytics">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">Auswertung</div>
+            <h1>Analytics</h1>
+          </div>
+        </div>
+        <div class="stats-grid" style="margin-bottom:16px">
+          <div class="stat-card">
+            <div class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg></div>
+            <div class="stat-body"><span class="stat-label">Texte generiert</span><span class="stat-value" id="aStatGen">0</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon navy"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
+            <div class="stat-body"><span class="stat-label">Erfolgreiche Jobs</span><span class="stat-value" id="aStatSuccess">0</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon green"><svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg></div>
+            <div class="stat-body"><span class="stat-label">Ø SEO Score</span><span class="stat-value" id="aStatScore">—</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon orange"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg></div>
+            <div class="stat-body"><span class="stat-label">Aktive Websites</span><span class="stat-value" id="aStatSites">0</span></div>
+          </div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-header"><h3>Aktivität (30 Tage)</h3></div>
+            <div class="analytics-chart-area">
+              <div class="analytics-grid-lines" id="analyticsGridLines">
+                <span></span><span></span><span></span><span></span>
+              </div>
+              <div class="analytics-bars" id="analyticsBars"></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><h3>SEO Score Verlauf</h3></div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:16px;padding:8px 0">
+              <div class="score-ring">
+                <svg viewBox="0 0 110 110" width="110" height="110">
+                  <circle class="score-ring-track" cx="55" cy="55" r="44"/>
+                  <circle class="score-ring-fill" cx="55" cy="55" r="44" id="scoreRingFill"
+                    stroke-dasharray="276.46" stroke-dashoffset="276.46"/>
+                </svg>
+                <div class="score-ring-value">
+                  <strong id="scoreRingNum">—</strong>
+                  <span>SEO</span>
+                </div>
+              </div>
+              <div class="score-bars" style="max-width:280px;width:100%">
+                <div class="score-bar-item">
+                  <div class="score-bar-top"><span class="score-bar-label">Keywords</span><span class="score-bar-num" id="sb1">—</span></div>
+                  <div class="score-bar-track"><div class="score-bar-fill" id="sbf1" style="width:0%"></div></div>
+                </div>
+                <div class="score-bar-item">
+                  <div class="score-bar-top"><span class="score-bar-label">Lesbarkeit</span><span class="score-bar-num" id="sb2">—</span></div>
+                  <div class="score-bar-track"><div class="score-bar-fill" id="sbf2" style="width:0%"></div></div>
+                </div>
+                <div class="score-bar-item">
+                  <div class="score-bar-top"><span class="score-bar-label">Meta Tags</span><span class="score-bar-num" id="sb3">—</span></div>
+                  <div class="score-bar-track"><div class="score-bar-fill" id="sbf3" style="width:0%"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SEO CHECKER ============ -->
+      <section class="page" id="page-seo-check">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">Analyse</div>
+            <h1>SEO Checker</h1>
+            <p>Analysiere Texte mit Claude AI und erhalte sofort Verbesserungsvorschläge.</p>
+          </div>
+        </div>
+        <div class="ai-lab-grid">
+          <div class="card">
+            <div class="card-header"><h3>Inhalt analysieren</h3></div>
+            <div class="form-group">
+              <label class="form-label">Text eingeben</label>
+              <textarea class="form-input" id="seoCheckInput" rows="8" placeholder="Füge hier deinen Text ein, der SEO-analysiert werden soll..."></textarea>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Ziel-Keywords</label>
+              <input type="text" class="form-input" id="seoCheckKeywords" placeholder="Keyword 1, Keyword 2, ..." />
+            </div>
+            <button class="btn btn-primary btn-lg" style="width:100%" onclick="runSeoCheck()">
+              <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/></svg>
+              SEO analysieren
+            </button>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <h3>Analyse-Ergebnis</h3>
+              <span class="badge badge-blue" id="seoScoreBadge">Warte auf Analyse</span>
+            </div>
+            <div id="seoCheckResult">
+              <div class="empty-state" style="padding:28px">
+                <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                <h4>Bereit für die Analyse</h4>
+                <p>Gib links einen Text ein und klicke auf "SEO analysieren".</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SNIPPET ============ -->
+      <section class="page" id="page-snippet">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">Integration</div>
+            <h1>Embed Snippet</h1>
+            <p>Binde das Snippet in deine Website ein, um AI-Content automatisch zu laden.</p>
+          </div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card">
+            <h3 style="font-size:15px;font-weight:950;color:var(--ff-navy);margin-bottom:12px">Wie es funktioniert</h3>
+            <p class="text-muted">Das Script verbindet deine Website mit dem seo.solutions Backend. Es läuft unsichtbar und ersetzt die markierten Elemente mit KI-optimiertem Inhalt.</p>
+
+            <div class="snippet-box">
+              <div class="snippet-bar">
+                <div class="snippet-dots"><span></span><span></span><span></span></div>
+                <span class="snippet-lang">JavaScript — in &lt;head&gt; einbinden</span>
+                <button class="btn btn-sm" style="background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.2)" onclick="copySnippet()">Kopieren</button>
+              </div>
+              <pre id="snippetCode">&lt;!-- seo.solutions AI Content Engine --&gt;
+&lt;script&gt;
+(function() {
+  var SEO_API_KEY = '<span class="str">YOUR_API_KEY</span>';
+  var script = document.createElement('<span class="str">script</span>');
+  script.src = '<span class="str">https://api.seo.solutions/v1/content/embed.js?key=</span>' + SEO_API_KEY;
+  script.async = true;
+  document.head.appendChild(script);
+})();
+&lt;/script&gt;</pre>
+            </div>
+
+            <div style="margin-top:20px">
+              <h3 style="font-size:15px;font-weight:950;color:var(--ff-navy);margin-bottom:12px">Zones im HTML markieren</h3>
+              <div class="snippet-box">
+                <div class="snippet-bar">
+                  <div class="snippet-dots"><span></span><span></span><span></span></div>
+                  <span class="snippet-lang">HTML Beispiele</span>
+                </div>
+                <pre><span class="cm">&lt;!-- Überschrift --&gt;</span>
+&lt;<span class="kw">h1</span> data-seo-zone=<span class="str">"main-headline"</span>&gt;Titel hier&lt;/<span class="kw">h1</span>&gt;
+
+<span class="cm">&lt;!-- Fließtext --&gt;</span>
+&lt;<span class="kw">p</span> data-seo-zone=<span class="str">"intro-text"</span>&gt;Text hier...&lt;/<span class="kw">p</span>&gt;
+
+<span class="cm">&lt;!-- Bild Alt-Text --&gt;</span>
+&lt;<span class="kw">img</span> data-seo-zone=<span class="str">"hero-img"</span> src=<span class="str">"..."</span> alt=<span class="str">""</span>&gt;
+
+<span class="cm">&lt;!-- Meta Description --&gt;</span>
+&lt;<span class="kw">meta</span> name=<span class="str">"description"</span> data-seo-zone=<span class="str">"meta-desc"</span>&gt;</pre>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:16px">
+            <div class="card">
+              <div class="card-header"><h3>Website auswählen</h3></div>
+              <p class="text-muted">Wähle eine Website, um ihr spezifisches Snippet mit API-Key zu erhalten.</p>
+              <select class="form-input" id="snippetWebsiteSelect" onchange="updateSnippetForWebsite()">
+                <option value="">— Website wählen —</option>
+              </select>
+            </div>
+
+            <div class="card">
+              <div class="card-header"><h3>Checkliste</h3></div>
+              <div class="seo-check-list">
+                <div class="seo-check-item pass">
+                  <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                  Script ist kleiner als 2 KB
+                </div>
+                <div class="seo-check-item pass">
+                  <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                  Kein Einfluss auf Ladezeit (async)
+                </div>
+                <div class="seo-check-item pass">
+                  <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+                  Automatische Wiederholung bei Fehler
+                </div>
+                <div class="seo-check-item warn">
+                  <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
+                  API-Key geheim halten
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SETTINGS ============ -->
+      <section class="page" id="page-settings">
+        <div class="page-header">
+          <div class="page-header-left">
+            <div class="section-label">Konfiguration</div>
+            <h1>Einstellungen</h1>
+          </div>
+        </div>
+        <div class="settings-grid">
+          <div class="card">
+            <h3 style="font-size:15px;font-weight:950;color:var(--ff-navy);margin-bottom:18px">AI Konfiguration</h3>
+            <div class="form-group">
+              <label class="form-label">Anthropic API Key</label>
+              <div class="input-row">
+                <input type="password" id="anthropicKey" placeholder="sk-ant-..." class="form-input" />
+                <button class="btn btn-primary" onclick="saveApiKey()">Speichern</button>
+              </div>
+              <div class="form-hint">Dein API Key wird lokal verschlüsselt gespeichert und nie übertragen.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">AI Modell</label>
+              <select class="form-input" id="aiModel">
+                <option value="claude-opus-4-8">Claude Opus 4.8 — Empfohlen</option>
+                <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — Schneller</option>
+                <option value="claude-haiku-4-5">Claude Haiku 4.5 — Günstigster</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Thinking Mode</label>
+              <select class="form-input" id="thinkingMode">
+                <option value="adaptive">Adaptive — KI entscheidet selbst</option>
+                <option value="disabled">Deaktiviert — Schnellere Antworten</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Standardsprache</label>
+              <select class="form-input" id="defaultLang">
+                <option value="de">Deutsch</option>
+                <option value="en">Englisch</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="card">
+            <h3 style="font-size:15px;font-weight:950;color:var(--ff-navy);margin-bottom:18px">Automation</h3>
+            <div class="form-group">
+              <label class="form-label">Standard-Intervall</label>
+              <select class="form-input" id="defaultInterval">
+                <option value="hourly">Stündlich</option>
+                <option value="daily" selected>Täglich</option>
+                <option value="weekly">Wöchentlich</option>
+                <option value="manual">Nur manuell</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Max. Jobs pro Tag</label>
+              <input type="number" class="form-input" id="maxJobs" value="50" min="1" max="1000" />
+            </div>
+            <div class="divider"></div>
+            <div class="form-group">
+              <div class="toggle-row">
+                <label class="form-label" style="margin:0">Auto-Genehmigung</label>
+                <div class="toggle on" id="autoApprove" onclick="this.classList.toggle('on')"></div>
+              </div>
+              <div class="form-hint">Generierte Inhalte sofort aktivieren ohne Bestätigung.</div>
+            </div>
+            <div class="form-group">
+              <div class="toggle-row">
+                <label class="form-label" style="margin:0">SEO Score Tracking</label>
+                <div class="toggle on" id="seoTracking" onclick="this.classList.toggle('on')"></div>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="toggle-row">
+                <label class="form-label" style="margin:0">Versionsverlauf speichern</label>
+                <div class="toggle on" id="saveVersions" onclick="this.classList.toggle('on')"></div>
+              </div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:8px;width:100%" onclick="saveSettings()">Einstellungen speichern</button>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:16px">
+          <div class="card-header">
+            <h3>API Status</h3>
+            <button class="btn btn-sm btn-secondary" onclick="testApiKey()">Verbindung testen</button>
+          </div>
+          <div id="apiStatusBox" class="info-box">
+            Gib deinen Anthropic API Key ein und teste die Verbindung.
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Website hinzufügen -->
+<div class="modal-overlay" id="addWebsiteModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Website hinzufügen</h3>
+      <button class="modal-close" onclick="closeModal('addWebsiteModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Website URL</label>
+        <input type="url" class="form-input" id="websiteUrl" placeholder="https://example.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Name</label>
+        <input type="text" class="form-input" id="websiteName" placeholder="Meine Website" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">SEO Keywords (kommagetrennt)</label>
+        <input type="text" class="form-input" id="websiteKeywords" placeholder="SEO, Webdesign, Österreich" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sprache</label>
+        <select class="form-input" id="websiteLang">
+          <option value="de">Deutsch</option>
+          <option value="en">Englisch</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Branche / Beschreibung</label>
+        <input type="text" class="form-input" id="websiteIndustry" placeholder="z.B. Webdesign-Agentur, Salzburg" />
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addWebsiteModal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="addWebsite()">Website hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Zone hinzufügen -->
+<div class="modal-overlay" id="addZoneModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Content Zone hinzufügen</h3>
+      <button class="modal-close" onclick="closeModal('addZoneModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Website</label>
+        <select class="form-input" id="zoneWebsite"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Zone ID <small style="font-weight:600;color:var(--ff-muted)">(= data-seo-zone="...")</small></label>
+        <input type="text" class="form-input" id="zoneId" placeholder="z.B. main-headline" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Zone Typ</label>
+        <select class="form-input" id="zoneType">
+          <option value="text">Fließtext</option>
+          <option value="headline">Überschrift (H1–H3)</option>
+          <option value="meta">Meta Description</option>
+          <option value="alt">Bild Alt-Text</option>
+          <option value="title">Seiten-Titel</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">AI Anweisung</label>
+        <textarea class="form-input" id="zonePrompt" rows="3" placeholder="z.B. Schreibe einen SEO-optimierten Einleitungstext über Webdesign in Salzburg..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Aktueller Inhalt</label>
+        <textarea class="form-input" id="zoneContent" rows="2" placeholder="Aktueller Inhalt (als Referenz für die KI)..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('addZoneModal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="addZone()">Zone speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Job erstellen -->
+<div class="modal-overlay" id="createJobModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>AI Job erstellen</h3>
+      <button class="modal-close" onclick="closeModal('createJobModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Content Zone</label>
+        <select class="form-input" id="jobZone"></select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Job-Typ</label>
+        <select class="form-input" id="jobType">
+          <option value="optimize">SEO-Optimieren</option>
+          <option value="rewrite">Komplett neuschreiben</option>
+          <option value="expand">Erweitern</option>
+          <option value="shorten">Kürzen</option>
+          <option value="refresh">Inhalt auffrischen</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Zeitplan</label>
+        <select class="form-input" id="jobSchedule">
+          <option value="once">Einmalig</option>
+          <option value="daily">Täglich</option>
+          <option value="weekly">Wöchentlich</option>
+          <option value="manual">Nur manuell</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('createJobModal')">Abbrechen</button>
+      <button class="btn btn-primary" onclick="createJob()">Job starten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Zone ansehen (Versionsverlauf) -->
+<div class="modal-overlay" id="viewZoneModal">
+  <div class="modal modal-wide">
+    <div class="modal-header">
+      <h3 id="viewZoneTitle">Zone Details</h3>
+      <button class="modal-close" onclick="closeModal('viewZoneModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="ai-lab-grid">
+        <div>
+          <div class="form-group">
+            <label class="form-label">Aktueller Inhalt</label>
+            <div class="ai-result-box" id="viewZoneContent" style="min-height:100px"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">AI Anweisung</label>
+            <div id="viewZonePrompt" style="font-size:13px;color:var(--ff-text-soft);background:var(--ff-bg-soft);padding:10px 12px;border-radius:10px;border:1px solid var(--ff-line)"></div>
+          </div>
+          <button class="btn btn-primary" style="width:100%" onclick="runZoneJobFromView()">
+            <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
+            Jetzt AI ausführen
+          </button>
+        </div>
+        <div>
+          <label class="form-label">Versionsverlauf</label>
+          <div class="versions-timeline" id="versionsTimeline">
+            <div style="color:var(--ff-muted);font-size:13px;text-align:center;padding:20px">Noch keine Versionen vorhanden.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <svg class="toast-icon" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+  <span id="toastMsg"></span>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

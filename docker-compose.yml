@@ -1,0 +1,15 @@
+services:
+  seo-app:
+    build: .
+    container_name: seo-solutions
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - seo-data:/app/db
+    environment:
+      - PORT=3000
+      - FLASK_ENV=production
+
+volumes:
+  seo-data:

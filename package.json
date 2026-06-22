@@ -1,0 +1,16 @@
+{
+  "name": "seo-solutions",
+  "version": "1.0.0",
+  "description": "AI-powered SEO content management platform",
+  "type": "module",
+  "main": "backend/server.js",
+  "scripts": {
+    "start": "node backend/server.js",
+    "dev": "node --watch backend/server.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2"
+  }
+}
