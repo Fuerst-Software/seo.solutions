@@ -1183,8 +1183,17 @@ function saveFirma(index) {
     website: biz.website || '',
     category: biz.category || '',
     source: biz.source || '',
-    seoScore: biz._seoScore || null,
-    seoData: biz._seoData || null,
+    seoScore: biz.seoScore || biz._seoScore || null,
+    seoData: {
+      online: biz.siteOnline || false,
+      siteTitle: biz.siteTitle || '',
+      title: !!biz.siteTitle,
+      metaDescription: biz.seoScore > 20,
+      hasH1: biz.seoScore > 35,
+      hasMobile: biz.seoScore > 50,
+      wordCount: null,
+      ...(biz._seoData || {}),
+    },
     savedAt: new Date().toISOString(),
     notes: '',
   };
@@ -1219,29 +1228,50 @@ function renderFirmenPage() {
     </div>`;
     return;
   }
-  container.innerHTML = `<div class="table-wrap"><table class="data-table">
-    <thead><tr>
-      <th>Firma</th><th>Branche</th><th>Adresse</th><th>Telefon</th><th>Email</th><th>Website</th><th>SEO</th><th>Aktionen</th>
-    </tr></thead>
-    <tbody>${state.firmen.map((f, i) => {
-      const s = f.seoScore;
-      const scoreClass = s ? (s >= 70 ? 'badge-success' : s >= 40 ? 'badge-pending' : 'badge-error') : 'badge-blue';
-      return `<tr>
-        <td><strong>${escHtml(f.name)}</strong></td>
-        <td>${escHtml(f.category)}</td>
-        <td style="font-size:12px">${escHtml(f.address)}</td>
-        <td>${f.phone ? `<a href="tel:${escHtml(f.phone)}" style="white-space:nowrap">${escHtml(f.phone)}</a>` : '—'}</td>
-        <td>${f.email ? `<a href="mailto:${escHtml(f.email)}">${escHtml(f.email)}</a>` : '—'}</td>
-        <td>${f.website ? `<a href="${escHtml(f.website)}" target="_blank" style="font-size:12px">${escHtml(f.website.replace(/^https?:\/\//, '').slice(0,30))}</a>` : '—'}</td>
-        <td><span class="badge ${scoreClass}">${s ? s + '/100' : '—'}</span></td>
-        <td style="display:flex;gap:6px">
-          ${f.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(f.website)}")'>Analyse</button>` : ''}
-          ${f.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify({name:f.name,website:f.website,category:f.category}).replace(/'/g,"&#39;")})'>→ Website</button>` : ''}
-          <button class="btn btn-sm btn-danger" onclick="deleteFirma('${f.id}')">✕</button>
-        </td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table></div>`;
+  container.innerHTML = state.firmen.map((f, i) => {
+    const s = f.seoScore;
+    const scoreColor = s ? (s >= 70 ? 'var(--ff-success)' : s >= 40 ? '#ea580c' : 'var(--ff-danger)') : 'var(--ff-muted)';
+    const hasWeb = !!f.website;
+    const online = f.seoData?.online !== false && hasWeb;
+    return `<div class="website-item" style="align-items:flex-start;padding:20px;margin-bottom:12px">
+      <div style="width:56px;height:56px;border-radius:14px;background:${hasWeb ? scoreColor : 'var(--ff-muted)'};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${s ? '18px' : '22px'};font-weight:950;flex-shrink:0">
+        ${s ? s : escHtml((f.name||'?')[0])}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+          <strong style="font-size:16px;color:var(--ff-navy)">${escHtml(f.name)}</strong>
+          ${f.category ? `<span class="search-result-category">${escHtml(f.category)}</span>` : ''}
+          ${f.source ? `<span class="badge badge-blue" style="font-size:9px">${escHtml(f.source)}</span>` : ''}
+          <span class="badge ${s ? (s >= 70 ? 'badge-success' : s >= 40 ? 'badge-pending' : 'badge-error') : ''}" style="font-size:10px">
+            ${hasWeb ? (online ? `SEO ${s || '?'}/100` : '⚠️ Offline') : '🚫 Keine Website'}
+          </span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;font-size:13px;margin-bottom:8px">
+          ${f.address ? `<div style="display:flex;gap:6px;align-items:flex-start"><span style="color:var(--ff-muted);flex-shrink:0">📍</span><span>${escHtml(f.address)}</span></div>` : ''}
+          ${f.phone ? `<div><span style="color:var(--ff-muted)">📞</span> <a href="tel:${escHtml(f.phone)}" style="font-weight:750">${escHtml(f.phone)}</a></div>` : '<div><span style="color:var(--ff-muted)">📞</span> <span style="color:var(--ff-danger);font-size:12px">Nicht verfügbar</span></div>'}
+          ${f.email ? `<div><span style="color:var(--ff-muted)">✉</span> <a href="mailto:${escHtml(f.email)}" style="font-weight:750">${escHtml(f.email)}</a></div>` : '<div><span style="color:var(--ff-muted)">✉</span> <span style="color:var(--ff-danger);font-size:12px">Nicht verfügbar</span></div>'}
+          ${f.website ? `<div><span style="color:var(--ff-muted)">🌐</span> <a href="${escHtml(f.website)}" target="_blank" style="font-weight:750;word-break:break-all">${escHtml(f.website.replace(/^https?:\/\//, ''))}</a></div>` : '<div><span style="color:var(--ff-muted)">🌐</span> <span style="color:var(--ff-danger);font-size:12px">Keine Website</span></div>'}
+        </div>
+
+        ${hasWeb && f.seoData ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          ${f.seoData.title ? `<span class="badge badge-success" style="font-size:9px">✓ Title</span>` : '<span class="badge badge-error" style="font-size:9px">✗ Kein Title</span>'}
+          ${f.seoData.metaDescription ? `<span class="badge badge-success" style="font-size:9px">✓ Meta</span>` : '<span class="badge badge-error" style="font-size:9px">✗ Keine Meta</span>'}
+          ${f.seoData.hasH1 ? `<span class="badge badge-success" style="font-size:9px">✓ H1</span>` : '<span class="badge badge-error" style="font-size:9px">✗ Kein H1</span>'}
+          ${f.seoData.hasMobile ? `<span class="badge badge-success" style="font-size:9px">✓ Mobil</span>` : '<span class="badge badge-error" style="font-size:9px">✗ Nicht mobil</span>'}
+          ${f.seoData.wordCount ? `<span class="badge badge-blue" style="font-size:9px">${f.seoData.wordCount} Wörter</span>` : ''}
+        </div>` : ''}
+
+        ${f.seoData?.siteTitle ? `<div style="font-size:11px;color:var(--ff-muted);font-style:italic">Seitentitel: "${escHtml(f.seoData.siteTitle)}"</div>` : ''}
+        <div style="font-size:11px;color:var(--ff-muted);margin-top:4px">Gespeichert: ${new Date(f.savedAt).toLocaleDateString('de-AT')} · Quelle: ${escHtml(f.source || '—')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+        ${f.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(f.website)}")'>SEO Details</button>` : ''}
+        ${f.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify({name:f.name,website:f.website,category:f.category}).replace(/'/g,"&#39;")})'>→ Website</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="deleteFirma('${f.id}')">Entfernen</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function deleteFirma(id) {
