@@ -12,6 +12,7 @@ const state = {
   activities: JSON.parse(localStorage.getItem('seo_activities') || '[]'),
   settings: JSON.parse(localStorage.getItem('seo_settings') || '{}'),
   stats: JSON.parse(localStorage.getItem('seo_stats') || '{"generated":0,"successJobs":0}'),
+  firmen: JSON.parse(localStorage.getItem('seo_firmen') || '[]'),
 };
 
 let currentViewZoneId = null;
@@ -27,6 +28,7 @@ function saveState() {
   localStorage.setItem('seo_activities', JSON.stringify(state.activities));
   localStorage.setItem('seo_settings', JSON.stringify(state.settings));
   localStorage.setItem('seo_stats', JSON.stringify(state.stats));
+  localStorage.setItem('seo_firmen', JSON.stringify(state.firmen));
 }
 
 // ===== NAVIGATION =====
@@ -41,6 +43,7 @@ const PAGE_TITLES = {
   snippet: 'Embed Snippet',
   settings: 'Einstellungen',
   search: 'Firmensuche',
+  firmen: 'Meine Firmen',
 };
 
 function navigateTo(page) {
@@ -62,6 +65,7 @@ function renderPage(page) {
   if (page === 'snippet') renderSnippetPage();
   if (page === 'ai-lab') renderLabZoneSelect();
   if (page === 'search') renderSearchPage();
+  if (page === 'firmen') renderFirmenPage();
 }
 
 // ===== MOBILE SIDEBAR =====
@@ -975,15 +979,20 @@ async function searchBusinesses() {
       <strong>Quellen:</strong> ${sources.map(s => escHtml(s)).join(' · ')} — ${businesses.length} Ergebnisse
     </div>` : '';
 
+    // Store businesses globally for save/analyze
+    window._lastSearchResults = businesses;
+
     results.innerHTML = sourceInfo + businesses.map((biz, i) => {
+      const saved = state.firmen.some(f => f.name.toLowerCase() === biz.name.toLowerCase());
       const stars = biz.rating ? '★'.repeat(Math.round(biz.rating)) + '☆'.repeat(5 - Math.round(biz.rating)) : '';
-      return `<div class="search-result-item">
+      return `<div class="search-result-item" id="search-result-${i}">
         <div class="search-result-favicon">${(biz.name || '?')[0].toUpperCase()}</div>
         <div class="search-result-body">
           <div class="search-result-name">${escHtml(biz.name)}</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px">
             ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
             ${biz.source ? `<span class="badge badge-blue" style="font-size:9px;padding:2px 6px">${escHtml(biz.source)}</span>` : ''}
+            <span class="badge" id="seo-badge-${i}" style="display:none"></span>
           </div>
           <div class="search-result-meta">
             ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
@@ -994,7 +1003,10 @@ async function searchBusinesses() {
           ${stars ? `<div class="search-result-rating">${stars} <span>${biz.rating.toFixed(1)}</span></div>` : ''}
         </div>
         <div class="search-result-actions">
-          ${biz.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify(biz).replace(/'/g, "&#39;")})'>+ Website</button>` : ''}
+          <button class="btn btn-sm ${saved ? 'btn-success' : 'btn-primary'}" id="save-btn-${i}"
+            onclick='saveFirma(${i})' ${saved ? 'disabled' : ''}>
+            ${saved ? '✓ Gespeichert' : '★ Speichern'}
+          </button>
           ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>SEO Analyse</button>` : ''}
         </div>
       </div>`;
@@ -1003,7 +1015,10 @@ async function searchBusinesses() {
     state.stats.searches = (state.stats.searches || 0) + 1;
     addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Ergebnisse aus ${sources.length} Portalen`, status: 'success', color: '#0b5cff' });
     saveState();
-    showToast(`${businesses.length} Firmen aus ${sources.length} Portalen gefunden!`, 'success');
+    showToast(`${businesses.length} Firmen gefunden! Analyse läuft...`, 'success');
+
+    // Auto-Analyse für alle Firmen mit Website
+    autoAnalyzeResults(businesses);
   } catch (e) {
     results.innerHTML = `<div class="seo-check-item fail" style="margin:16px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
     showToast('Fehler bei der Suche: ' + e.message, 'error');
@@ -1101,6 +1116,147 @@ async function analyzeWebsite(url) {
   }
 }
 
+// ===== AUTO-ANALYSE bei Suchergebnissen =====
+async function autoAnalyzeResults(businesses) {
+  const withWebsite = businesses.filter(b => b.website).slice(0, 15);
+  for (let i = 0; i < businesses.length; i++) {
+    const biz = businesses[i];
+    if (!biz.website) continue;
+    const badge = document.getElementById(`seo-badge-${i}`);
+    if (!badge) continue;
+    badge.style.display = '';
+    badge.className = 'badge badge-pending';
+    badge.textContent = '⏳ Analyse...';
+    try {
+      const res = await fetch(API_BASE + '/api/websites/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: biz.website }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        badge.className = 'badge badge-error';
+        badge.textContent = '✗ Fehler';
+        continue;
+      }
+      const s = data.seoScore || 0;
+      biz._seoScore = s;
+      biz._seoData = data;
+      badge.className = `badge ${s >= 70 ? 'badge-success' : s >= 40 ? 'badge-pending' : 'badge-error'}`;
+      badge.textContent = `SEO: ${s}/100`;
+      state.stats.analyzed = (state.stats.analyzed || 0) + 1;
+    } catch (e) {
+      badge.className = 'badge badge-error';
+      badge.textContent = '✗ Offline';
+    }
+  }
+  saveState();
+}
+
+// ===== FIRMA SPEICHERN =====
+function saveFirma(index) {
+  const biz = window._lastSearchResults?.[index];
+  if (!biz) return;
+  if (state.firmen.some(f => f.name.toLowerCase() === biz.name.toLowerCase())) {
+    showToast('Firma bereits gespeichert.', 'info');
+    return;
+  }
+  const firma = {
+    id: genId(),
+    name: biz.name,
+    address: biz.address || '',
+    phone: biz.phone || '',
+    email: biz.email || '',
+    website: biz.website || '',
+    category: biz.category || '',
+    source: biz.source || '',
+    seoScore: biz._seoScore || null,
+    seoData: biz._seoData || null,
+    savedAt: new Date().toISOString(),
+    notes: '',
+  };
+  state.firmen.push(firma);
+  saveState();
+  const btn = document.getElementById(`save-btn-${index}`);
+  if (btn) { btn.textContent = '✓ Gespeichert'; btn.className = 'btn btn-sm btn-success'; btn.disabled = true; }
+  updateFirmenBadge();
+  addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: firma.category, status: 'success', color: '#087a43' });
+  saveState();
+  showToast(`"${firma.name}" gespeichert!`, 'success');
+}
+
+function updateFirmenBadge() {
+  const badge = document.getElementById('navBadgeFirmen');
+  if (badge) {
+    if (state.firmen.length > 0) { badge.textContent = state.firmen.length; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
+}
+
+// ===== FIRMEN SEITE =====
+function renderFirmenPage() {
+  updateFirmenBadge();
+  const container = document.getElementById('firmenList');
+  if (!state.firmen.length) {
+    container.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10z"/></svg>
+      <h4>Noch keine Firmen gespeichert</h4>
+      <p>Suche nach Unternehmen und speichere interessante Firmen hier.</p>
+      <button class="btn btn-primary" onclick="navigateTo('search')">Firmensuche starten</button>
+    </div>`;
+    return;
+  }
+  container.innerHTML = `<div class="table-wrap"><table class="data-table">
+    <thead><tr>
+      <th>Firma</th><th>Branche</th><th>Adresse</th><th>Telefon</th><th>Email</th><th>Website</th><th>SEO</th><th>Aktionen</th>
+    </tr></thead>
+    <tbody>${state.firmen.map((f, i) => {
+      const s = f.seoScore;
+      const scoreClass = s ? (s >= 70 ? 'badge-success' : s >= 40 ? 'badge-pending' : 'badge-error') : 'badge-blue';
+      return `<tr>
+        <td><strong>${escHtml(f.name)}</strong></td>
+        <td>${escHtml(f.category)}</td>
+        <td style="font-size:12px">${escHtml(f.address)}</td>
+        <td>${f.phone ? `<a href="tel:${escHtml(f.phone)}" style="white-space:nowrap">${escHtml(f.phone)}</a>` : '—'}</td>
+        <td>${f.email ? `<a href="mailto:${escHtml(f.email)}">${escHtml(f.email)}</a>` : '—'}</td>
+        <td>${f.website ? `<a href="${escHtml(f.website)}" target="_blank" style="font-size:12px">${escHtml(f.website.replace(/^https?:\/\//, '').slice(0,30))}</a>` : '—'}</td>
+        <td><span class="badge ${scoreClass}">${s ? s + '/100' : '—'}</span></td>
+        <td style="display:flex;gap:6px">
+          ${f.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(f.website)}")'>Analyse</button>` : ''}
+          ${f.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify({name:f.name,website:f.website,category:f.category}).replace(/'/g,"&#39;")})'>→ Website</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="deleteFirma('${f.id}')">✕</button>
+        </td>
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function deleteFirma(id) {
+  state.firmen = state.firmen.filter(f => f.id !== id);
+  saveState();
+  renderFirmenPage();
+  updateFirmenBadge();
+  showToast('Firma entfernt.', 'success');
+}
+
+function exportFirmen() {
+  if (!state.firmen.length) { showToast('Keine Firmen zum Exportieren.', 'error'); return; }
+  const header = 'Name;Branche;Adresse;Telefon;Email;Website;SEO Score;Quelle;Gespeichert';
+  const rows = state.firmen.map(f =>
+    [f.name, f.category, f.address, f.phone, f.email, f.website, f.seoScore || '', f.source, f.savedAt].map(v => `"${String(v).replace(/"/g,'""')}"`).join(';')
+  );
+  const csv = '﻿' + header + '\n' + rows.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `seo-solutions-firmen-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  showToast(`${state.firmen.length} Firmen als CSV exportiert!`, 'success');
+}
+
 // ===== INIT =====
 loadSettings();
 renderDashboard();
+updateFirmenBadge();
