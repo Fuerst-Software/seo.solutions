@@ -206,68 +206,80 @@ def search_firmenabc(query, location):
 
 
 def search_wko(query, location):
-    """WKO Firmen A-Z — Wirtschaftskammer"""
+    """WKO Firmen A-Z — Wirtschaftskammer Österreich (server-rendered HTML)"""
     results = []
     try:
-        q_enc = requests.utils.quote(query)
-        l_enc = requests.utils.quote(location)
-        urls_to_try = [
-            f"https://firmen.wko.at/suche_{q_enc}/{l_enc}",
-            f"https://firmen.wko.at/?what={q_enc}&where={l_enc}",
-        ]
-        resp = None
-        for url in urls_to_try:
-            print(f"[WKO] Trying: {url}")
-            try:
-                resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15, allow_redirects=True)
-                print(f"[WKO] Status: {resp.status_code}, URL: {resp.url}, Length: {len(resp.text)}")
-                if resp.status_code == 200:
-                    break
-            except Exception:
-                continue
-        if not resp or resp.status_code != 200:
+        q = query.lower().strip()
+        l = location.lower().strip()
+        url = f"https://firmen.wko.at/{requests.utils.quote(q)}/{requests.utils.quote(l)}/"
+        print(f"[WKO] Fetching: {url}")
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15, allow_redirects=True)
+        print(f"[WKO] Status: {resp.status_code}, Length: {len(resp.text)}")
+        if resp.status_code != 200:
             return results
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        for item in soup.find_all(["article", "div", "li", "section", "tr"]):
-            classes = " ".join(item.get("class", []))
-            if not any(x in classes.lower() for x in ["result", "company", "entry", "firma", "item", "card", "hit"]):
-                continue
-
-            name_el = item.find(["h2", "h3", "h4"])
-            if not name_el:
-                name_el = item.find("a", class_=lambda c: c and any(x in str(c).lower() for x in ["name", "firma", "title"]))
+        for article in soup.select("article.search-result-article"):
+            # Name
+            name_el = article.select_one(".search-result-header h3")
             name = name_el.get_text(strip=True) if name_el else ""
             if not is_valid_business(name):
                 continue
 
-            address, phone, website, email = "", "", "", ""
-            phone_el = item.find("a", href=lambda h: h and h.startswith("tel:"))
+            # Branche
+            cat_el = article.select_one(".title-details")
+            category = cat_el.get_text(strip=True) if cat_el else query
+
+            # Adresse
+            street_el = article.select_one(".address .street")
+            place_el = article.select_one(".address .place")
+            street = street_el.get_text(strip=True) if street_el else ""
+            place = place_el.get_text(strip=True).replace("\xa0", " ").strip() if place_el else ""
+            address = f"{street}, {place}".strip(", ") if street or place else location
+
+            # Telefon
+            phone = ""
+            phone_el = article.select_one("a[href^='tel:']")
             if phone_el:
-                phone = phone_el.get_text(strip=True) or phone_el["href"].replace("tel:", "")
-            email_el = item.find("a", href=lambda h: h and h.startswith("mailto:"))
+                span = phone_el.find("span")
+                phone = span.get_text(strip=True) if span else phone_el.get_text(strip=True)
+
+            # Email
+            email = ""
+            email_el = article.select_one("a[href^='mailto:']")
             if email_el:
                 email = email_el["href"].replace("mailto:", "")
-            for a in item.find_all("a", href=True):
-                href = a["href"]
-                if href.startswith("http") and "wko.at" not in href and "google" not in href:
-                    website = href
-                    break
-            for el in item.find_all(["span", "div", "p", "address"]):
-                txt = el.get_text(strip=True)
-                if any(x in txt.lower() for x in ["straße", "gasse", "weg", "platz", ","]) and 8 < len(txt) < 120:
-                    address = txt
-                    break
+
+            # Website
+            website = ""
+            web_icon = article.find("use", attrs={"xlink:href": "#website"})
+            if web_icon:
+                web_link = web_icon.find_parent("a")
+                if web_link:
+                    span = web_link.find("span")
+                    website = span.get_text(strip=True) if span else ""
+
+            # Detail-Link für mehr Infos
+            detail_link = ""
+            title_a = article.select_one("a.title-link")
+            if title_a and title_a.get("href"):
+                detail_link = "https://firmen.wko.at" + title_a["href"]
 
             results.append({
-                "name": name, "address": address or location, "phone": phone,
-                "website": website, "email": email, "category": query,
-                "rating": None, "source": "WKO Firmen A-Z",
+                "name": name,
+                "address": address,
+                "phone": phone,
+                "website": website,
+                "email": email,
+                "category": category or query,
+                "rating": None,
+                "source": "WKO Firmen A-Z",
+                "detailUrl": detail_link,
             })
-        print(f"[WKO] Found: {len(results)} results")
+        print(f"[WKO] Found: {len(results)} businesses")
     except Exception as e:
         print(f"[WKO] Error: {e}")
-    return results[:20]
+    return results[:30]
 
 
 # Deutsche Branche → OSM-Tags Zuordnung
@@ -330,41 +342,30 @@ def search_osm(query, location, radius):
         lon = float(geo_data[0]["lon"])
         print(f"[OSM] Location: {lat}, {lon} — Radius: {radius}m")
 
-        # OSM-Tag basierte Suche (Branche → Tag)
         query_lower = query.lower().strip()
-        tag_filters = []
+
+        # Branche → OSM-Tag Queries (node + way, KEIN nwr!)
+        lines = []
+        matched_tags = []
         for keyword, mappings in BRANCH_TO_OSM.items():
             if keyword in query_lower or query_lower in keyword:
                 for tag_key, tag_val in mappings:
                     if tag_val:
-                        tag_filters.append(f'nwr["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
-                    else:
-                        tag_filters.append(f'nwr["{tag_key}"]["name"](around:{radius},{lat},{lon});')
+                        lines.append(f'node["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                        lines.append(f'way["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                        matched_tags.append(f"{tag_key}={tag_val}")
 
-        # Name-basierte Suche (node+way statt nwr — viel schneller!)
-        tag_filters.append(f'node["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
-        tag_filters.append(f'node["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
-        tag_filters.append(f'node["name"~"{query_lower}",i]["office"](around:{radius},{lat},{lon});')
-        tag_filters.append(f'way["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+        # Name-basierte Suche
+        lines.append(f'node["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+        lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
+        lines.append(f'node["name"~"{query_lower}",i]["office"](around:{radius},{lat},{lon});')
+        lines.append(f'node["name"~"{query_lower}",i]["amenity"](around:{radius},{lat},{lon});')
+        lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+        lines.append(f'way["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
 
-        # Fallback: alle Handwerksbetriebe wenn keine Tags gefunden
-        if len(tag_filters) <= 4:
-            tag_filters.append(f'node["craft"]["name"](around:{radius},{lat},{lon});')
-            tag_filters.append(f'way["craft"]["name"](around:{radius},{lat},{lon});')
-
-        # node/way statt nwr — nwr verursacht Timeouts!
-        tag_filters = [f.replace('nwr[', 'node[') for f in tag_filters]
-        tag_filters_way = [f.replace('node[', 'way[') for f in tag_filters if 'node[' in f]
-
-        overpass_query = f"""
-        [out:json][timeout:30];
-        (
-          {"".join(tag_filters)}
-          {"".join(tag_filters_way)}
-        );
-        out center 200;
-        """
-        print(f"[OSM] Overpass query with {len(tag_filters)} filters")
+        overpass_body = "\n".join(lines)
+        overpass_query = f"[out:json][timeout:30];\n(\n{overpass_body}\n);\nout center 200;"
+        print(f"[OSM] Tags: {matched_tags or 'name-only'}, {len(lines)} filters")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
