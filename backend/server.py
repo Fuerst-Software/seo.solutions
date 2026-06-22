@@ -270,8 +270,49 @@ def search_wko(query, location):
     return results[:20]
 
 
+# Deutsche Branche → OSM-Tags Zuordnung
+BRANCH_TO_OSM = {
+    "tischler": [("craft", "carpenter"), ("craft", "cabinet_maker")],
+    "tischlerei": [("craft", "carpenter"), ("craft", "cabinet_maker")],
+    "schreiner": [("craft", "carpenter")],
+    "friseur": [("shop", "hairdresser")],
+    "frisör": [("shop", "hairdresser")],
+    "bäcker": [("shop", "bakery")],
+    "bäckerei": [("shop", "bakery")],
+    "metzger": [("shop", "butcher")],
+    "fleischer": [("shop", "butcher")],
+    "elektriker": [("craft", "electrician")],
+    "installateur": [("craft", "plumber"), ("craft", "hvac")],
+    "klempner": [("craft", "plumber")],
+    "maler": [("craft", "painter")],
+    "dachdecker": [("craft", "roofer")],
+    "schmied": [("craft", "blacksmith")],
+    "auto": [("shop", "car"), ("shop", "car_repair")],
+    "kfz": [("shop", "car_repair")],
+    "werkstatt": [("shop", "car_repair"), ("craft", "")],
+    "restaurant": [("amenity", "restaurant")],
+    "gasthaus": [("amenity", "restaurant"), ("amenity", "pub")],
+    "hotel": [("tourism", "hotel")],
+    "apotheke": [("amenity", "pharmacy")],
+    "arzt": [("amenity", "doctors")],
+    "zahnarzt": [("amenity", "dentist")],
+    "rechtsanwalt": [("office", "lawyer")],
+    "anwalt": [("office", "lawyer")],
+    "steuerberater": [("office", "tax_advisor"), ("office", "accountant")],
+    "immobilien": [("office", "estate_agent")],
+    "versicherung": [("office", "insurance")],
+    "bank": [("amenity", "bank")],
+    "supermarkt": [("shop", "supermarket")],
+    "blumen": [("shop", "florist")],
+    "optiker": [("shop", "optician")],
+    "fotograf": [("craft", "photographer")],
+    "webdesign": [("office", "it"), ("craft", "")],
+    "it": [("office", "it")],
+}
+
+
 def search_osm(query, location, radius):
-    """OpenStreetMap / Overpass — echte Firmendaten mit Kontaktinfos"""
+    """OpenStreetMap / Overpass — mit Branchen-Mapping"""
     results = []
     try:
         geo_resp = requests.get(
@@ -282,28 +323,41 @@ def search_osm(query, location, radius):
         )
         geo_data = geo_resp.json()
         if not geo_data:
+            print(f"[OSM] Location not found: {location}")
             return results
 
         lat = float(geo_data[0]["lat"])
         lon = float(geo_data[0]["lon"])
         print(f"[OSM] Location: {lat}, {lon} — Radius: {radius}m")
 
-        # Breite Suche: alle benannten Betriebe/Geschäfte/Büros im Umkreis
+        # OSM-Tag basierte Suche (Branche → Tag)
+        query_lower = query.lower().strip()
+        tag_filters = []
+        for keyword, mappings in BRANCH_TO_OSM.items():
+            if keyword in query_lower or query_lower in keyword:
+                for tag_key, tag_val in mappings:
+                    if tag_val:
+                        tag_filters.append(f'nwr["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                    else:
+                        tag_filters.append(f'nwr["{tag_key}"]["name"](around:{radius},{lat},{lon});')
+
+        # Immer auch Name-basierte Suche
+        tag_filters.append(f'nwr["name"~"{query_lower}",i](around:{radius},{lat},{lon});')
+
+        # Fallback: alle Betriebe wenn keine Tags gefunden
+        if len(tag_filters) <= 1:
+            tag_filters.append(f'nwr["craft"]["name"](around:{radius},{lat},{lon});')
+            tag_filters.append(f'nwr["shop"]["name"](around:{radius},{lat},{lon});')
+            tag_filters.append(f'nwr["office"]["name"](around:{radius},{lat},{lon});')
+
         overpass_query = f"""
         [out:json][timeout:30];
         (
-          nwr["name"]["craft"](around:{radius},{lat},{lon});
-          nwr["name"]["shop"](around:{radius},{lat},{lon});
-          nwr["name"]["office"](around:{radius},{lat},{lon});
-          nwr["name"]["amenity"](around:{radius},{lat},{lon});
-          nwr["name"]["company"](around:{radius},{lat},{lon});
-          nwr["name"]["industrial"](around:{radius},{lat},{lon});
-          nwr["name"]["trade"](around:{radius},{lat},{lon});
-          nwr["name"]["brand"](around:{radius},{lat},{lon});
+          {"".join(tag_filters)}
         );
-        out center 300;
+        out center 200;
         """
-        print(f"[OSM] Querying Overpass...")
+        print(f"[OSM] Overpass query with {len(tag_filters)} filters")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
@@ -314,29 +368,21 @@ def search_osm(query, location, radius):
         elements = ov_data.get("elements", [])
         print(f"[OSM] Raw elements: {len(elements)}")
 
-        query_lower = query.lower()
-        query_parts = query_lower.split()
         seen = set()
-
         for el in elements:
             tags = el.get("tags", {})
             name = tags.get("name", "")
             if not is_valid_business(name):
                 continue
 
-            all_vals = " ".join(str(v) for v in tags.values()).lower()
-            name_lower = name.lower()
-            if not any(p in all_vals or p in name_lower for p in query_parts):
-                continue
-
-            key = name_lower.strip()
+            key = name.lower().strip()
             if key in seen:
                 continue
             seen.add(key)
 
             category = (
                 tags.get("craft") or tags.get("shop") or tags.get("office")
-                or tags.get("amenity") or tags.get("industrial") or ""
+                or tags.get("amenity") or tags.get("tourism") or ""
             )
             addr = " ".join(filter(None, [
                 tags.get("addr:street", ""), tags.get("addr:housenumber", ""),
@@ -351,7 +397,7 @@ def search_osm(query, location, radius):
                 "category": category.replace("_", " ").title() if category else query,
                 "rating": None, "source": "OpenStreetMap",
             })
-        print(f"[OSM] Matched: {len(results)} results")
+        print(f"[OSM] Matched: {len(results)} businesses")
     except Exception as e:
         print(f"[OSM] Error: {e}")
     return results
