@@ -196,7 +196,7 @@ def deep_discover_website(name, address, phone, email, location):
 
     print(f"[DISCOVER] Searching for: {name_clean} ({len(search_queries)} queries)")
 
-    for sq in search_queries:
+    for i, sq in enumerate(search_queries):
         results = _ddg_search(sq)
         for r in results:
             url = r["url"]
@@ -208,7 +208,9 @@ def deep_discover_website(name, address, phone, email, location):
             if best[1] >= 5:
                 print(f"[DISCOVER] Found (score {best[1]}): {name_clean} → {best[0]}")
                 return best[0]
-        time.sleep(0.3)
+        # Delay zwischen DuckDuckGo Queries um Blocking zu vermeiden
+        if i < len(search_queries) - 1:
+            time.sleep(0.5)
 
     # WKO Detail-Seite als letzte Quelle
     try:
@@ -385,17 +387,33 @@ def search_wko(query, location):
             return results
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        # Auch alle Bezirk-Links laden für breitere Suche
+        # Auch alle Bezirk-Links laden für breitere Suche (Umkreis).
+        # WKO listet benachbarte Bezirke/Orte als Links; wir folgen allen, die
+        # nach einem Orts-/Bezirks-Link aussehen (gleicher Branchen-Slug, anderer Ort).
         bezirk_links = []
-        for a in soup.select("a.link.list-group-item"):
-            href = a.get("href", "")
-            if href and "bezirk" in href.lower():
-                full = "https://firmen.wko.at" + href if href.startswith("/") else href
-                bezirk_links.append(full)
-        print(f"[WKO] Found {len(bezirk_links)} Bezirk-Links")
+        seen_bz = set()
+        for a in soup.find_all("a", href=True):
+            href = a.get("href", "").strip()
+            if not href:
+                continue
+            href_l = href.lower()
+            # Bezirk/Orts-Links: enthalten den Branchen-Slug und einen weiteren Ort-Pfad
+            is_loc_link = (
+                "bezirk" in href_l
+                or "/bundesland/" in href_l
+                or (href_l.startswith("/") and q in href_l and href_l.count("/") >= 2 and l not in href_l)
+            )
+            if not is_loc_link:
+                continue
+            full = "https://firmen.wko.at" + href if href.startswith("/") else href
+            if full.lower() in seen_bz or "firmen.wko.at" not in full.lower():
+                continue
+            seen_bz.add(full.lower())
+            bezirk_links.append(full)
+        print(f"[WKO] Found {len(bezirk_links)} Bezirk/Umkreis-Links")
 
         all_soups = [soup]
-        for bz_url in bezirk_links[:5]:
+        for bz_url in bezirk_links[:8]:
             try:
                 bz_resp = requests.get(bz_url, headers=SEARCH_HEADERS, timeout=12, allow_redirects=True)
                 if bz_resp.status_code == 200:
@@ -523,25 +541,44 @@ def search_osm(query, location, radius):
 
         query_lower = (query or "").lower().strip()
 
-        # Radius begrenzen um Timeouts zu vermeiden
-        safe_radius = min(radius, 15000)
+        # Radius immer begrenzen um Overpass-Timeouts zu vermeiden (max 15km).
+        safe_radius = min(int(radius or 5000), 15000)
         matched_tags = []
+        # OSM-Tag-Wert -> deutsche Kategorie (für Kategorie-Zuordnung)
+        OSM_VAL_TO_DE = {
+            "carpenter": "Tischlerei", "cabinet_maker": "Tischlerei",
+            "hairdresser": "Friseur", "bakery": "Bäckerei", "butcher": "Metzgerei",
+            "electrician": "Elektriker", "plumber": "Installateur", "hvac": "Installateur",
+            "painter": "Maler", "roofer": "Dachdecker", "blacksmith": "Schmied",
+            "car": "Autohaus", "car_repair": "KFZ-Werkstatt",
+            "restaurant": "Restaurant", "pub": "Gasthaus", "hotel": "Hotel",
+            "pharmacy": "Apotheke", "doctors": "Arzt", "dentist": "Zahnarzt",
+            "lawyer": "Rechtsanwalt", "tax_advisor": "Steuerberater",
+            "accountant": "Steuerberater", "estate_agent": "Immobilien",
+            "insurance": "Versicherung", "bank": "Bank", "supermarket": "Supermarkt",
+            "florist": "Blumen", "optician": "Optiker", "photographer": "Fotograf",
+            "it": "IT-Dienstleister",
+        }
 
         if query_lower:
-            # MIT Branche: gezielte Tag-Suche + Name-Suche
+            # MIT Branche: NUR gezielte Tag-Suche nach den Branch-Mappings.
+            # Keine name-basierte Volltextsuche (führt zu falschen Treffern wie
+            # "restaurant" bei "tischler").
             lines = []
             for keyword, mappings in BRANCH_TO_OSM.items():
                 if keyword in query_lower or query_lower in keyword:
                     for tag_key, tag_val in mappings:
                         if tag_val:
-                            lines.append(f'node["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
-                            lines.append(f'way["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
-                            matched_tags.append(f"{tag_key}={tag_val}")
-            lines.append(f'node["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
-            lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
-            lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+                            lines.append(f'node["{tag_key}"="{tag_val}"]["name"](around:{safe_radius},{lat},{lon});')
+                            lines.append(f'way["{tag_key}"="{tag_val}"]["name"](around:{safe_radius},{lat},{lon});')
+                            matched_tags.append((tag_key, tag_val))
+            if not lines:
+                # Unbekannte Branche: vorsichtige Name-Suche als Fallback
+                lines.append(f'node["name"~"{query_lower}",i]["craft"](around:{safe_radius},{lat},{lon});')
+                lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{safe_radius},{lat},{lon});')
+                lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{safe_radius},{lat},{lon});')
         else:
-            # OHNE Branche: alle Firmen, aber getrennte Queries um Timeouts zu vermeiden
+            # OHNE Branche: alle Firmen, getrennte Queries um Timeouts zu vermeiden
             lines = [
                 f'node["craft"]["name"](around:{safe_radius},{lat},{lon});',
                 f'node["shop"]["name"](around:{safe_radius},{lat},{lon});',
@@ -550,7 +587,7 @@ def search_osm(query, location, radius):
 
         overpass_body = "\n".join(lines)
         overpass_query = f"[out:json][timeout:25];\n(\n{overpass_body}\n);\nout center 300;"
-        print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters, radius={safe_radius if not query_lower else radius}")
+        print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters, radius={safe_radius}")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
@@ -576,28 +613,27 @@ def search_osm(query, location, radius):
                 continue
             seen.add(key)
 
-            category = (
+            category_val = (
                 tags.get("craft") or tags.get("shop") or tags.get("office")
                 or tags.get("amenity") or tags.get("tourism") or ""
             )
-            category_clean = category.replace("_", " ").title() if category else ""
+            # Echte OSM-Kategorie -> deutsche Bezeichnung (statt Suchbegriff)
+            category_clean = (
+                OSM_VAL_TO_DE.get(category_val)
+                or (category_val.replace("_", " ").title() if category_val else "")
+            )
 
-            # Branche-Filter: wenn Branche angegeben, muss sie matchen
-            if query_parts:
-                all_vals = " ".join(str(v) for v in tags.values()).lower()
-                name_lower = name.lower()
-                if not any(p in all_vals or p in name_lower for p in query_parts):
-                    # Prüfe auch ob die OSM-Kategorie passt
-                    if matched_tags:
-                        tag_match = False
-                        for mt in matched_tags:
-                            tk, tv = mt.split("=")
-                            if tags.get(tk) == tv:
-                                tag_match = True
-                                break
-                        if not tag_match:
-                            continue
-                    else:
+            # Branche-Filter (STRENG): wenn Branche angegeben und wir konkrete
+            # Branch-Tags haben, MUSS das Element exakt eines dieser Tags tragen.
+            if query_lower:
+                if matched_tags:
+                    tag_match = any(tags.get(tk) == tv for tk, tv in matched_tags)
+                    if not tag_match:
+                        continue
+                else:
+                    # Fallback-Branche ohne Mapping: Name oder Tag-Werte müssen matchen
+                    all_vals = " ".join(str(v) for v in tags.values()).lower()
+                    if not any(p in all_vals or p in name.lower() for p in query_parts):
                         continue
 
             addr = " ".join(filter(None, [
@@ -612,7 +648,7 @@ def search_osm(query, location, radius):
                 "email": tags.get("email") or tags.get("contact:email", ""),
                 "fax": tags.get("fax", ""),
                 "operator": tags.get("operator", ""),
-                "category": category_clean or query or "Unternehmen",
+                "category": category_clean or "Unternehmen",
                 "rating": None, "source": "OpenStreetMap",
             })
         print(f"[OSM] Matched: {len(results)} of {len(elements)} elements")
@@ -665,7 +701,7 @@ def quick_analyze(url):
         if not url.startswith(("http://", "https://")):
             url = "https://" + url
         start = time.time()
-        resp = requests.get(url, timeout=10, headers={
+        resp = requests.get(url, timeout=6, headers={
             "User-Agent": "Mozilla/5.0 (compatible; SEOSolutionsBot/1.0)"
         }, allow_redirects=True)
         load_time = round(time.time() - start, 2)
@@ -752,30 +788,33 @@ def quick_analyze(url):
         robots_content = robots.get("content", "").lower() if robots else ""
         result["robotsBlocked"] = "noindex" in robots_content
 
-        # ===== SEO SCORE (0-100, 15+ Faktoren) =====
+        # ===== SEO SCORE (0-100, fair gewichtet) =====
         score = 0
-        # Title (0-15)
+        # HTTPS (0-12) — Sicherheit & Ranking-Faktor, hoch gewichtet
+        if result["https"]:
+            score += 12
+        # Title (0-14)
         if title:
-            score += 8
+            score += 7
             if 30 <= len(title) <= 65:
                 score += 7
             elif len(title) > 10:
                 score += 3
-        # Meta Description (0-15)
+        # Meta Description (0-13)
         if meta:
-            score += 8
+            score += 7
             if 120 <= len(meta) <= 160:
-                score += 7
+                score += 6
             elif len(meta) > 50:
                 score += 3
-        # H1 (0-10)
+        # H1 (0-9)
         if h1s:
-            score += 6
+            score += 5
             if len(h1s) == 1:
                 score += 4
-        # Mobile (0-8)
+        # Mobile (0-10) — Mobile-First Indexing
         if viewport:
-            score += 8
+            score += 10
         # Content (0-10)
         if words >= 300:
             score += 6
@@ -783,18 +822,19 @@ def quick_analyze(url):
                 score += 4
         elif words >= 100:
             score += 3
-        # HTTPS (0-8)
-        if result["https"]:
-            score += 8
         # Speed (0-8)
-        if load_time < 2:
+        if load_time < 1.5:
             score += 8
-        elif load_time < 4:
-            score += 4
-        # Images (0-6)
+        elif load_time < 3:
+            score += 5
+        elif load_time < 5:
+            score += 2
+        # Images Alt (0-6)
         if imgs_total > 0 and imgs_with_alt == imgs_total:
             score += 6
         elif imgs_total > 0 and imgs_with_alt > 0:
+            score += 3
+        elif imgs_total == 0:
             score += 3
         # Links (0-6)
         if internal >= 3:
@@ -809,11 +849,14 @@ def quick_analyze(url):
             score += 4
         elif len(h2s) >= 1:
             score += 2
-        # OG/Canonical (0-5)
+        # OG / Canonical (0-3)
         if result["hasOG"]:
-            score += 3
-        if result["hasCanonical"]:
             score += 2
+        if result["hasCanonical"]:
+            score += 1
+        # Penalty: noindex blockiert Indexierung komplett
+        if result.get("robotsBlocked"):
+            score = int(score * 0.4)
 
         result["seoScore"] = min(score, 100)
     except Exception as e:
@@ -876,7 +919,7 @@ def search_businesses():
         def _discover(biz):
             return biz, deep_discover_website(biz["name"], biz.get("address",""), biz.get("phone",""), biz.get("email",""), location)
         with ThreadPoolExecutor(max_workers=5) as pool:
-            futures = [pool.submit(_discover, b) for b in no_site[:20]]
+            futures = [pool.submit(_discover, b) for b in no_site[:15]]
             for f in as_completed(futures):
                 try:
                     biz, url = f.result()
