@@ -34,6 +34,7 @@ const PAGE_TITLES = {
   'seo-check': 'SEO Checker',
   snippet: 'Embed Snippet',
   settings: 'Einstellungen',
+  search: 'Firmensuche',
 };
 
 function navigateTo(page) {
@@ -54,6 +55,7 @@ function renderPage(page) {
   if (page === 'analytics') renderAnalytics();
   if (page === 'snippet') renderSnippetPage();
   if (page === 'ai-lab') renderLabZoneSelect();
+  if (page === 'search') renderSearchPage();
 }
 
 // ===== MOBILE SIDEBAR =====
@@ -909,6 +911,119 @@ function statusLabel(s) { return { success:'Erfolgreich', pending:'Ausstehend', 
 function jobTypeLabel(t) { return { optimize:'SEO Optimieren', rewrite:'Neuschreiben', expand:'Erweitern', shorten:'Kürzen', refresh:'Auffrischen' }[t] || t; }
 function zoneTypeLabel(t) { return { text:'Text', headline:'Headline', meta:'Meta', alt:'Alt-Text', title:'Titel' }[t] || t; }
 function scheduleLabel(s) { return { once:'Einmalig', daily:'Täglich', weekly:'Wöchentlich', manual:'Manuell' }[s] || s; }
+
+// ===== FIRMENSUCHE =====
+function renderSearchPage() {
+  const results = document.getElementById('searchResults');
+  if (!results.querySelector('.search-result-item')) {
+    results.innerHTML = `<div class="empty-state" style="padding:28px">
+      <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+      <h4>Noch keine Suche</h4>
+      <p>Gib eine Branche und einen Ort ein, um Unternehmen in der Nähe zu finden.</p>
+    </div>`;
+  }
+}
+
+async function searchBusinesses() {
+  const query = document.getElementById('searchQuery').value.trim();
+  const location = document.getElementById('searchLocation').value.trim();
+  const radiusKm = parseInt(document.getElementById('searchRadius').value, 10) || 5;
+  if (!query) { showToast('Bitte Branche / Suchbegriff eingeben.', 'error'); return; }
+  if (!location) { showToast('Bitte Ort / Stadt eingeben.', 'error'); return; }
+
+  const results = document.getElementById('searchResults');
+  results.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;gap:12px;padding:40px;color:var(--ff-blue)">
+    <div class="spinner" style="border-color:rgba(11,92,255,.3);border-top-color:var(--ff-blue)"></div>
+    Firmen werden gesucht...
+  </div>`;
+
+  try {
+    const res = await fetch('/api/search/businesses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, location, radius: radiusKm * 1000 }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    const businesses = data.businesses || data.results || [];
+    if (!businesses.length) {
+      results.innerHTML = `<div class="empty-state" style="padding:28px">
+        <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+        <h4>Keine Ergebnisse</h4>
+        <p>Für "${escHtml(query)}" in "${escHtml(location)}" wurden keine Firmen gefunden.</p>
+      </div>`;
+      return;
+    }
+
+    results.innerHTML = businesses.map((biz, i) => {
+      const stars = biz.rating ? '★'.repeat(Math.round(biz.rating)) + '☆'.repeat(5 - Math.round(biz.rating)) : '';
+      return `<div class="search-result-item">
+        <div class="search-result-favicon">${(biz.name || '?')[0].toUpperCase()}</div>
+        <div class="search-result-body">
+          <div class="search-result-name">${escHtml(biz.name)}</div>
+          ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
+          <div class="search-result-meta">
+            ${biz.address ? `<span>${escHtml(biz.address)}</span>` : ''}
+            ${biz.phone ? `<span>Tel: ${escHtml(biz.phone)}</span>` : ''}
+            ${biz.website ? `<span class="search-result-url">${escHtml(biz.website)}</span>` : ''}
+          </div>
+          ${stars ? `<div class="search-result-rating">${stars} <span>${biz.rating.toFixed(1)}</span></div>` : ''}
+        </div>
+        <div class="search-result-actions">
+          ${biz.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify(biz).replace(/'/g, "&#39;")})'>Als Website hinzufügen</button>` : ''}
+          ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>Analysieren</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Ergebnisse`, status: 'success', color: '#0b5cff' });
+    saveState();
+    showToast(`${businesses.length} Firmen gefunden!`, 'success');
+  } catch (e) {
+    results.innerHTML = `<div class="seo-check-item fail" style="margin:16px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
+    showToast('Fehler bei der Suche: ' + e.message, 'error');
+  }
+}
+
+function addBusinessAsWebsite(biz) {
+  const existing = state.websites.find(w => w.url === biz.website);
+  if (existing) {
+    showToast('Diese Website ist bereits verbunden.', 'info');
+    return;
+  }
+  const w = {
+    id: genId(),
+    url: biz.website,
+    name: biz.name || biz.website,
+    keywords: biz.category || '',
+    lang: 'de',
+    industry: biz.category || '',
+    apiKey: genApiKey(),
+    createdAt: new Date().toISOString(),
+  };
+  state.websites.push(w);
+  addActivity({ title: `Website "${w.name}" aus Firmensuche hinzugefügt`, meta: w.url, status: 'success', color: '#087a43' });
+  saveState();
+  renderDashboard();
+  showToast(`"${w.name}" als Website hinzugefügt!`, 'success');
+}
+
+async function analyzeWebsite(url) {
+  showToast('Website wird analysiert...', 'info');
+  try {
+    const res = await fetch('/api/websites/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    showToast(`Analyse abgeschlossen! Score: ${data.score || '—'}/100`, 'success');
+  } catch (e) {
+    showToast('Analyse-Fehler: ' + e.message, 'error');
+  }
+}
 
 // ===== INIT =====
 loadSettings();

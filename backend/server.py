@@ -3,9 +3,14 @@ import os
 import sys
 import random
 import string
+import time
+import re
 from pathlib import Path
 from datetime import datetime
+from urllib.parse import urlparse
 
+import requests
+from bs4 import BeautifulSoup
 from flask import Flask, jsonify, request, send_from_directory, abort
 from flask_cors import CORS
 
@@ -56,6 +61,200 @@ def now_iso() -> str:
 def index():
     return send_from_directory(str(ROOT), "index.html")
 
+
+# ===== BUSINESS SEARCH (Google Places API) =====
+
+@app.post("/api/search/businesses")
+def search_businesses():
+    body = request.get_json() or {}
+    query = body.get("query", "").strip()
+    location = body.get("location", "").strip()
+    radius = body.get("radius", 5000)
+
+    if not query or not location:
+        return jsonify({"error": "query and location are required"}), 400
+
+    api_key = os.environ.get("GOOGLE_PLACES_API_KEY", "")
+    if not api_key:
+        return jsonify({
+            "error": "Google Places API key not configured. "
+                     "Set the GOOGLE_PLACES_API_KEY environment variable to enable business search."
+        }), 503
+
+    try:
+        # First geocode the location to get lat/lng
+        geo_resp = requests.get(
+            "https://maps.googleapis.com/maps/api/geocode/json",
+            params={"address": location, "key": api_key},
+            timeout=10,
+        )
+        geo_data = geo_resp.json()
+        if not geo_data.get("results"):
+            return jsonify({"error": f"Could not geocode location: {location}"}), 400
+
+        lat_lng = geo_data["results"][0]["geometry"]["location"]
+
+        # Search nearby places
+        places_resp = requests.get(
+            "https://maps.googleapis.com/maps/api/place/textsearch/json",
+            params={
+                "query": query,
+                "location": f"{lat_lng['lat']},{lat_lng['lng']}",
+                "radius": radius,
+                "key": api_key,
+            },
+            timeout=10,
+        )
+        places_data = places_resp.json()
+
+        businesses = []
+        for place in places_data.get("results", []):
+            # Fetch details for phone and website
+            detail = {}
+            place_id = place.get("place_id")
+            if place_id:
+                det_resp = requests.get(
+                    "https://maps.googleapis.com/maps/api/place/details/json",
+                    params={
+                        "place_id": place_id,
+                        "fields": "formatted_phone_number,website",
+                        "key": api_key,
+                    },
+                    timeout=10,
+                )
+                detail = det_resp.json().get("result", {})
+
+            businesses.append({
+                "name": place.get("name", ""),
+                "address": place.get("formatted_address", ""),
+                "phone": detail.get("formatted_phone_number", ""),
+                "website": detail.get("website", ""),
+                "rating": place.get("rating"),
+                "types": place.get("types", []),
+            })
+
+        return jsonify({"businesses": businesses, "count": len(businesses)})
+
+    except requests.RequestException as e:
+        return jsonify({"error": f"Google API request failed: {str(e)}"}), 502
+
+
+# ===== WEBSITE SEO ANALYSIS =====
+
+@app.post("/api/websites/analyze")
+def analyze_website():
+    body = request.get_json() or {}
+    url = body.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "url is required"}), 400
+
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+
+    try:
+        start_time = time.time()
+        resp = requests.get(url, timeout=15, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; SEOSolutionsBot/1.0)"
+        })
+        load_time = round(time.time() - start_time, 3)
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        return jsonify({"error": f"Could not fetch URL: {str(e)}"}), 400
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    parsed_url = urlparse(url)
+    domain = parsed_url.netloc
+
+    # Title
+    title_tag = soup.find("title")
+    title = title_tag.get_text(strip=True) if title_tag else ""
+
+    # Meta description
+    meta_desc_tag = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
+    meta_description = meta_desc_tag.get("content", "") if meta_desc_tag else ""
+
+    # H1 tags
+    h1_tags = [h1.get_text(strip=True) for h1 in soup.find_all("h1")]
+
+    # Word count (visible text)
+    text = soup.get_text(separator=" ", strip=True)
+    word_count = len(text.split())
+
+    # Images
+    images = soup.find_all("img")
+    images_total = len(images)
+    images_with_alt = sum(1 for img in images if img.get("alt", "").strip())
+    images_without_alt = images_total - images_with_alt
+
+    # Links
+    links = soup.find_all("a", href=True)
+    internal_links = 0
+    external_links = 0
+    for link in links:
+        href = link["href"]
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        link_parsed = urlparse(href)
+        if not link_parsed.netloc or link_parsed.netloc == domain:
+            internal_links += 1
+        else:
+            external_links += 1
+
+    # Mobile-friendly check (viewport meta)
+    viewport_tag = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.I)})
+    has_viewport = viewport_tag is not None
+
+    # Basic SEO score (0-100)
+    score = 0
+    if title:
+        score += 15
+        if 30 <= len(title) <= 65:
+            score += 5
+    if meta_description:
+        score += 15
+        if 120 <= len(meta_description) <= 160:
+            score += 5
+    if h1_tags:
+        score += 10
+        if len(h1_tags) == 1:
+            score += 5
+    if has_viewport:
+        score += 10
+    if word_count >= 300:
+        score += 10
+    if images_total > 0 and images_without_alt == 0:
+        score += 10
+    if internal_links >= 3:
+        score += 5
+    if external_links >= 1:
+        score += 5
+    if load_time < 3:
+        score += 5
+
+    result = {
+        "url": url,
+        "title": title,
+        "metaDescription": meta_description,
+        "h1Tags": h1_tags,
+        "wordCount": word_count,
+        "images": {
+            "total": images_total,
+            "withAlt": images_with_alt,
+            "withoutAlt": images_without_alt,
+        },
+        "links": {
+            "internal": internal_links,
+            "external": external_links,
+        },
+        "mobileFriendly": has_viewport,
+        "loadTime": load_time,
+        "seoScore": score,
+    }
+
+    return jsonify(result)
+
+
+# ===== SERVE FRONTEND (catch-all — must be last) =====
 
 @app.route("/<path:filename>")
 def serve_static(filename):
