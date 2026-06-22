@@ -968,32 +968,40 @@ async function searchBusinesses() {
       return;
     }
 
-    results.innerHTML = businesses.map((biz, i) => {
+    const sources = data.sources || [];
+    const sourceInfo = sources.length ? `<div class="info-box" style="margin-bottom:12px;font-size:12px">
+      <strong>Quellen:</strong> ${sources.map(s => escHtml(s)).join(' · ')} — ${businesses.length} Ergebnisse
+    </div>` : '';
+
+    results.innerHTML = sourceInfo + businesses.map((biz, i) => {
       const stars = biz.rating ? '★'.repeat(Math.round(biz.rating)) + '☆'.repeat(5 - Math.round(biz.rating)) : '';
       return `<div class="search-result-item">
         <div class="search-result-favicon">${(biz.name || '?')[0].toUpperCase()}</div>
         <div class="search-result-body">
           <div class="search-result-name">${escHtml(biz.name)}</div>
-          ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px">
+            ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
+            ${biz.source ? `<span class="badge badge-blue" style="font-size:9px;padding:2px 6px">${escHtml(biz.source)}</span>` : ''}
+          </div>
           <div class="search-result-meta">
-            ${biz.address ? `<span>${escHtml(biz.address)}</span>` : ''}
-            ${biz.phone ? `<span>Tel: ${escHtml(biz.phone)}</span>` : ''}
-            ${biz.email ? `<span>E-Mail: ${escHtml(biz.email)}</span>` : ''}
-            ${biz.website ? `<span class="search-result-url">${escHtml(biz.website)}</span>` : ''}
+            ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
+            ${biz.phone ? `<span>📞 ${escHtml(biz.phone)}</span>` : ''}
+            ${biz.email ? `<span>✉ ${escHtml(biz.email)}</span>` : ''}
+            ${biz.website ? `<span class="search-result-url">🌐 ${escHtml(biz.website)}</span>` : ''}
           </div>
           ${stars ? `<div class="search-result-rating">${stars} <span>${biz.rating.toFixed(1)}</span></div>` : ''}
         </div>
         <div class="search-result-actions">
-          ${biz.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify(biz).replace(/'/g, "&#39;")})'>Als Website hinzufügen</button>` : ''}
-          ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>Analysieren</button>` : ''}
+          ${biz.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${JSON.stringify(biz).replace(/'/g, "&#39;")})'>+ Website</button>` : ''}
+          ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>SEO Analyse</button>` : ''}
         </div>
       </div>`;
     }).join('');
 
     state.stats.searches = (state.stats.searches || 0) + 1;
-    addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Ergebnisse`, status: 'success', color: '#0b5cff' });
+    addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Ergebnisse aus ${sources.length} Portalen`, status: 'success', color: '#0b5cff' });
     saveState();
-    showToast(`${businesses.length} Firmen gefunden!`, 'success');
+    showToast(`${businesses.length} Firmen aus ${sources.length} Portalen gefunden!`, 'success');
   } catch (e) {
     results.innerHTML = `<div class="seo-check-item fail" style="margin:16px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
     showToast('Fehler bei der Suche: ' + e.message, 'error');

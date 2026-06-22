@@ -62,9 +62,262 @@ def index():
     return send_from_directory(str(ROOT), "index.html")
 
 
-# ===== BUSINESS SEARCH (OpenStreetMap — kostenlos) =====
+# ===== BUSINESS SEARCH — MULTI-PORTAL =====
+# Quellen: Herold.at, Firmen ABC, WKO Firmen A-Z, OpenStreetMap/Overpass
 
+SEARCH_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Accept-Language": "de-AT,de;q=0.9,en;q=0.8",
+}
 OSM_HEADERS = {"User-Agent": "seo.solutions/1.0 (contact@fuerst-software.com)"}
+
+
+def search_herold(query, location):
+    """Herold.at — Österreichisches Telefonbuch / Firmenverzeichnis"""
+    results = []
+    try:
+        search_term = f"{query} {location}".strip()
+        url = "https://www.herold.at/gelbe-seiten/was_{}/wo_{}/".format(
+            requests.utils.quote(query),
+            requests.utils.quote(location),
+        )
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=12)
+        if resp.status_code != 200:
+            return results
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for item in soup.select("[data-testid='result-item'], .result-item, .listing-item"):
+            name = ""
+            name_el = item.select_one("h2, h3, .listing-name, [data-testid='result-title']")
+            if name_el:
+                name = name_el.get_text(strip=True)
+            if not name:
+                continue
+
+            address = ""
+            addr_el = item.select_one(".address, .listing-address, [data-testid='result-address']")
+            if addr_el:
+                address = addr_el.get_text(strip=True)
+
+            phone = ""
+            phone_el = item.select_one("a[href^='tel:'], .phone, .listing-phone")
+            if phone_el:
+                phone = phone_el.get_text(strip=True)
+
+            website = ""
+            web_el = item.select_one("a[data-testid='result-website'], a.website-link, a[href*='redirect']")
+            if web_el:
+                href = web_el.get("href", "")
+                if "herold.at" not in href and href.startswith("http"):
+                    website = href
+
+            category = ""
+            cat_el = item.select_one(".category, .listing-category, [data-testid='result-category']")
+            if cat_el:
+                category = cat_el.get_text(strip=True)
+
+            results.append({
+                "name": name,
+                "address": address or location,
+                "phone": phone,
+                "website": website,
+                "email": "",
+                "category": category or query,
+                "rating": None,
+                "source": "Herold.at",
+            })
+    except Exception:
+        pass
+    return results
+
+
+def search_firmenabc(query, location):
+    """FirmenABC.at — Österreichisches Firmenverzeichnis"""
+    results = []
+    try:
+        url = "https://www.firmenabc.at/result.aspx"
+        params = {"what": query, "where": location}
+        resp = requests.get(url, params=params, headers=SEARCH_HEADERS, timeout=12)
+        if resp.status_code != 200:
+            return results
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for item in soup.select(".result-item, .company-item, .search-result, article"):
+            name = ""
+            name_el = item.select_one("h2, h3, .company-name, .result-title a")
+            if name_el:
+                name = name_el.get_text(strip=True)
+            if not name:
+                continue
+
+            address = ""
+            addr_el = item.select_one(".address, .company-address, .result-address")
+            if addr_el:
+                address = addr_el.get_text(strip=True)
+
+            phone = ""
+            phone_el = item.select_one("a[href^='tel:'], .phone, .company-phone")
+            if phone_el:
+                phone = phone_el.get_text(strip=True)
+
+            website = ""
+            for a in item.select("a[href]"):
+                href = a.get("href", "")
+                if href.startswith("http") and "firmenabc.at" not in href:
+                    website = href
+                    break
+
+            results.append({
+                "name": name,
+                "address": address or location,
+                "phone": phone,
+                "website": website,
+                "email": "",
+                "category": query,
+                "rating": None,
+                "source": "FirmenABC.at",
+            })
+    except Exception:
+        pass
+    return results
+
+
+def search_wko(query, location):
+    """WKO Firmen A-Z — Wirtschaftskammer Österreich"""
+    results = []
+    try:
+        url = "https://firmen.wko.at/SearchSimple.aspx"
+        params = {"searchterm": query, "location": location}
+        resp = requests.get(url, params=params, headers=SEARCH_HEADERS, timeout=12)
+        if resp.status_code != 200:
+            url2 = f"https://firmen.wko.at/suche_{requests.utils.quote(query)}_{requests.utils.quote(location)}"
+            resp = requests.get(url2, headers=SEARCH_HEADERS, timeout=12)
+            if resp.status_code != 200:
+                return results
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for item in soup.select(".company-result, .result-item, .search-result-item, .company"):
+            name = ""
+            name_el = item.select_one("h2, h3, .company-name, a.name")
+            if name_el:
+                name = name_el.get_text(strip=True)
+            if not name:
+                continue
+
+            address = ""
+            addr_el = item.select_one(".address, .company-address")
+            if addr_el:
+                address = addr_el.get_text(strip=True)
+
+            phone = ""
+            phone_el = item.select_one("a[href^='tel:'], .phone")
+            if phone_el:
+                phone = phone_el.get_text(strip=True)
+
+            website = ""
+            for a in item.select("a[href]"):
+                href = a.get("href", "")
+                if href.startswith("http") and "wko.at" not in href:
+                    website = href
+                    break
+
+            email = ""
+            email_el = item.select_one("a[href^='mailto:']")
+            if email_el:
+                email = email_el.get("href", "").replace("mailto:", "")
+
+            results.append({
+                "name": name,
+                "address": address or location,
+                "phone": phone,
+                "website": website,
+                "email": email,
+                "category": query,
+                "rating": None,
+                "source": "WKO Firmen A-Z",
+            })
+    except Exception:
+        pass
+    return results
+
+
+def search_osm(query, location, radius):
+    """OpenStreetMap / Overpass API — weltweite Geodaten"""
+    results = []
+    try:
+        geo_resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": location, "format": "json", "limit": 1},
+            headers=OSM_HEADERS,
+            timeout=10,
+        )
+        geo_data = geo_resp.json()
+        if not geo_data:
+            return results
+
+        lat = float(geo_data[0]["lat"])
+        lon = float(geo_data[0]["lon"])
+
+        overpass_query = f"""
+        [out:json][timeout:15];
+        (
+          nwr["name"]["craft"~"."](around:{radius},{lat},{lon});
+          nwr["name"]["shop"~"."](around:{radius},{lat},{lon});
+          nwr["name"]["office"~"."](around:{radius},{lat},{lon});
+          nwr["name"]["amenity"~"."](around:{radius},{lat},{lon});
+        );
+        out center 80;
+        """
+        ov_resp = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={"data": overpass_query},
+            headers=OSM_HEADERS,
+            timeout=20,
+        )
+        ov_data = ov_resp.json()
+
+        query_lower = query.lower()
+        seen = set()
+
+        for el in ov_data.get("elements", []):
+            tags = el.get("tags", {})
+            name = tags.get("name", "")
+            if not name:
+                continue
+
+            category = (
+                tags.get("craft") or tags.get("shop") or tags.get("office")
+                or tags.get("amenity") or tags.get("tourism") or tags.get("leisure")
+                or ""
+            )
+            all_vals = " ".join(str(v) for v in tags.values()).lower()
+            if query_lower not in all_vals and query_lower not in name.lower():
+                continue
+
+            key = name.lower().strip()
+            if key in seen:
+                continue
+            seen.add(key)
+
+            addr = " ".join(filter(None, [
+                tags.get("addr:street", ""), tags.get("addr:housenumber", ""),
+                tags.get("addr:postcode", ""), tags.get("addr:city", ""),
+            ])).strip()
+
+            results.append({
+                "name": name,
+                "address": addr or location,
+                "phone": tags.get("phone") or tags.get("contact:phone", ""),
+                "website": tags.get("website") or tags.get("contact:website", ""),
+                "email": tags.get("email") or tags.get("contact:email", ""),
+                "category": category.replace("_", " ").title() if category else "",
+                "rating": None,
+                "source": "OpenStreetMap",
+            })
+    except Exception:
+        pass
+    return results
+
 
 @app.post("/api/search/businesses")
 def search_businesses():
@@ -76,83 +329,35 @@ def search_businesses():
     if not query or not location:
         return jsonify({"error": "query and location are required"}), 400
 
-    try:
-        geo_resp = requests.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={"q": location, "format": "json", "limit": 1},
-            headers=OSM_HEADERS,
-            timeout=10,
-        )
-        geo_data = geo_resp.json()
-        if not geo_data:
-            return jsonify({"error": f"Ort nicht gefunden: {location}"}), 400
+    all_results = []
+    seen_names = set()
+    errors = []
 
-        lat = float(geo_data[0]["lat"])
-        lon = float(geo_data[0]["lon"])
+    # Alle Portale parallel-ish abfragen
+    for source_fn, source_args in [
+        (search_herold, (query, location)),
+        (search_firmenabc, (query, location)),
+        (search_wko, (query, location)),
+        (search_osm, (query, location, radius)),
+    ]:
+        try:
+            results = source_fn(*source_args)
+            for biz in results:
+                name_key = biz["name"].lower().strip()
+                if name_key not in seen_names:
+                    seen_names.add(name_key)
+                    all_results.append(biz)
+        except Exception as e:
+            errors.append(str(e))
 
-        overpass_query = f"""
-        [out:json][timeout:15];
-        (
-          nwr["name"](around:{radius},{lat},{lon});
-        );
-        out center 60;
-        """
-        ov_resp = requests.post(
-            "https://overpass-api.de/api/interpreter",
-            data={"data": overpass_query},
-            headers=OSM_HEADERS,
-            timeout=20,
-        )
-        ov_data = ov_resp.json()
+    # Sortierung: Firmen mit Website zuerst, dann mit Telefon
+    all_results.sort(key=lambda b: (not b.get("website"), not b.get("phone"), b["name"]))
 
-        query_lower = query.lower()
-        businesses = []
-        seen_names = set()
-
-        for el in ov_data.get("elements", []):
-            tags = el.get("tags", {})
-            name = tags.get("name", "")
-            if not name:
-                continue
-
-            category = (
-                tags.get("shop") or tags.get("craft") or tags.get("office")
-                or tags.get("amenity") or tags.get("tourism") or tags.get("leisure")
-                or ""
-            )
-            all_tags = " ".join(str(v) for v in tags.values()).lower()
-            if query_lower not in all_tags and query_lower not in name.lower():
-                continue
-
-            name_key = name.lower().strip()
-            if name_key in seen_names:
-                continue
-            seen_names.add(name_key)
-
-            addr_parts = [
-                tags.get("addr:street", ""),
-                tags.get("addr:housenumber", ""),
-                tags.get("addr:postcode", ""),
-                tags.get("addr:city", ""),
-            ]
-            address = " ".join(p for p in addr_parts if p).strip()
-
-            businesses.append({
-                "name": name,
-                "address": address or location,
-                "phone": tags.get("phone") or tags.get("contact:phone", ""),
-                "website": tags.get("website") or tags.get("contact:website", ""),
-                "email": tags.get("email") or tags.get("contact:email", ""),
-                "category": category.replace("_", " ").title() if category else "",
-                "rating": None,
-            })
-
-        businesses.sort(key=lambda b: (not b["website"], not b["phone"], b["name"]))
-
-        return jsonify({"businesses": businesses[:40], "count": len(businesses)})
-
-    except requests.RequestException as e:
-        return jsonify({"error": f"Suche fehlgeschlagen: {str(e)}"}), 502
+    return jsonify({
+        "businesses": all_results[:60],
+        "count": len(all_results),
+        "sources": ["Herold.at", "FirmenABC.at", "WKO Firmen A-Z", "OpenStreetMap"],
+    })
 
 
 # ===== WEBSITE SEO ANALYSIS =====
