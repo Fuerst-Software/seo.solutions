@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT))
 from ai.content_generator import generate_content, batch_generate_content, analyze_seo
 
 app = Flask(__name__, static_folder=str(ROOT), static_url_path="")
-CORS(app)
+CORS(app, origins=["*"])
 
 DB_FILE = ROOT / "db" / "data.json"
 
@@ -533,7 +533,7 @@ def serve_static(filename):
 # ===== START =====
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 3000))
+    port = int(os.environ.get("PORT", 3001))
     print(f"seo.solutions Python backend running on http://localhost:{port}")
     debug = os.environ.get("FLASK_ENV") != "production"
     app.run(host="0.0.0.0", port=port, debug=debug)

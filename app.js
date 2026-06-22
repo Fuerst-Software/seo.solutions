@@ -1,3 +1,7 @@
+// ===== API CONFIG =====
+// Backend läuft auf dem iMac Server — Frontend wird über GitHub Pages ausgeliefert
+const API_BASE = 'http://10.0.0.230:3001';
+
 // ===== STATE =====
 const state = {
   websites: JSON.parse(localStorage.getItem('seo_websites') || '[]'),
@@ -74,17 +78,25 @@ document.querySelectorAll('.nav-item').forEach(item => {
 // ===== DASHBOARD =====
 function renderDashboard() {
   document.getElementById('statWebsites').textContent = state.websites.length;
-  document.getElementById('statZones').textContent = state.zones.length;
-  const todayJobs = state.jobs.filter(j => {
-    if (!j.lastRun) return false;
-    return new Date(j.lastRun).toDateString() === new Date().toDateString();
-  });
-  document.getElementById('statJobs').textContent = todayJobs.length;
+  document.getElementById('statSearches').textContent = state.stats.searches || 0;
+  document.getElementById('statAnalyzed').textContent = state.stats.analyzed || 0;
   document.getElementById('statGenerated').textContent = state.stats.generated || 0;
 
   updateNavBadges();
   renderActivities();
   updateQuickstart();
+}
+
+function dashQuickSearch() {
+  const q = document.getElementById('dashSearchQuery').value.trim();
+  const loc = document.getElementById('dashSearchLocation').value.trim();
+  if (!q || !loc) { showToast('Bitte Branche und Ort eingeben.', 'error'); return; }
+  navigateTo('search');
+  setTimeout(() => {
+    document.getElementById('searchQuery').value = q;
+    document.getElementById('searchLocation').value = loc;
+    searchBusinesses();
+  }, 50);
 }
 
 function updateNavBadges() {
@@ -342,7 +354,7 @@ async function runZoneJob(zoneId) {
   }
   showAiRunning(true);
   try {
-    const res = await fetch('/api/ai/generate', {
+    const res = await fetch(API_BASE + '/api/ai/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -444,7 +456,7 @@ async function labGenerate() {
   document.getElementById('applyResultBtn').style.display = 'none';
 
   try {
-    const res = await fetch('/api/ai/generate', {
+    const res = await fetch(API_BASE + '/api/ai/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -604,7 +616,7 @@ async function runSeoCheck() {
     </div>`;
 
   try {
-    const res = await fetch('/api/ai/analyze', {
+    const res = await fetch(API_BASE + '/api/ai/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, keywords, apiKey: state.settings.anthropicKey, model: state.settings.aiModel || 'claude-opus-4-8' }),
@@ -823,7 +835,7 @@ async function testApiKey() {
   if (!key) { box.textContent = 'Bitte zuerst einen API Key eingeben.'; box.style.borderLeftColor = 'var(--ff-danger)'; return; }
   box.innerHTML = '<span class="spinner" style="border-color:rgba(11,92,255,.3);border-top-color:var(--ff-blue)"></span> Verbindung wird getestet...';
   try {
-    const res = await fetch('/api/ai/generate', {
+    const res = await fetch(API_BASE + '/api/ai/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ zoneType: 'text', prompt: 'Antworte nur mit: OK', currentContent: '', apiKey: key, model: 'claude-haiku-4-5' }),
@@ -938,7 +950,7 @@ async function searchBusinesses() {
   </div>`;
 
   try {
-    const res = await fetch('/api/search/businesses', {
+    const res = await fetch(API_BASE + '/api/search/businesses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, location, radius: radiusKm * 1000 }),
@@ -978,6 +990,7 @@ async function searchBusinesses() {
       </div>`;
     }).join('');
 
+    state.stats.searches = (state.stats.searches || 0) + 1;
     addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Ergebnisse`, status: 'success', color: '#0b5cff' });
     saveState();
     showToast(`${businesses.length} Firmen gefunden!`, 'success');
@@ -1018,7 +1031,7 @@ async function analyzeWebsite(url) {
     Website wird analysiert...
   </div>`;
   try {
-    const res = await fetch('/api/websites/analyze', {
+    const res = await fetch(API_BASE + '/api/websites/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url }),
@@ -1068,6 +1081,7 @@ async function analyzeWebsite(url) {
         </div>`).join('')}
       </div>`;
 
+    state.stats.analyzed = (state.stats.analyzed || 0) + 1;
     addActivity({ title: `Website analysiert: ${data.title || url}`, meta: `Score: ${s}/100`, status: s >= 50 ? 'success' : 'error', color: scoreColor });
     saveState();
     showToast(`Analyse abgeschlossen! Score: ${s}/100`, 'success');

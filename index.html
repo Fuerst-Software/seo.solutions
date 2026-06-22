@@ -119,45 +119,62 @@
               Übersicht
             </div>
             <h1>Willkommen zurück</h1>
-            <p>Dein KI-gesteuertes SEO-System läuft automatisch im Hintergrund.</p>
+            <p>Finde Unternehmen, analysiere Websites und optimiere Inhalte mit KI.</p>
           </div>
-          <button class="btn btn-primary btn-lg" onclick="navigateTo('ai-lab')">
-            <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
-            AI Labor öffnen
-          </button>
+        </div>
+
+        <!-- SCHNELLSUCHE — Hauptfunktion direkt im Dashboard -->
+        <div class="card" style="margin-bottom:20px;background:linear-gradient(135deg,var(--ff-navy),var(--ff-blue-dark));color:#fff;border:none">
+          <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
+            <div style="width:44px;height:44px;border-radius:12px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+              <svg viewBox="0 0 24 24" style="width:22px;height:22px;fill:#fff"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>
+            </div>
+            <div>
+              <h3 style="font-size:18px;font-weight:950;margin-bottom:2px">Firmen finden & analysieren</h3>
+              <p style="font-size:13px;color:rgba(255,255,255,.75);margin:0">Suche nach Unternehmen in deiner Nähe, analysiere ihre Websites und starte die SEO-Optimierung.</p>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px">
+            <input type="text" class="form-input" id="dashSearchQuery" placeholder="Branche (z.B. Webdesign, Friseur...)" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2);color:#fff;border-radius:14px" />
+            <input type="text" class="form-input" id="dashSearchLocation" placeholder="Ort (z.B. Salzburg, Wien...)" style="background:rgba(255,255,255,.12);border-color:rgba(255,255,255,.2);color:#fff;border-radius:14px" />
+            <button class="btn btn-lg" style="background:#fff;color:var(--ff-blue-dark);border-color:#fff;min-width:140px" onclick="dashQuickSearch()">
+              <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/></svg>
+              Suchen
+            </button>
+          </div>
         </div>
 
         <div class="stats-grid" id="statsGrid">
-          <div class="stat-card">
-            <div class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg></div>
+          <div class="stat-card" onclick="navigateTo('search')" style="cursor:pointer">
+            <div class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/></svg></div>
+            <div class="stat-body">
+              <span class="stat-label">Firmen gesucht</span>
+              <span class="stat-value" id="statSearches">0</span>
+              <span class="stat-sub">Suchanfragen</span>
+            </div>
+          </div>
+          <div class="stat-card" onclick="navigateTo('websites')" style="cursor:pointer">
+            <div class="stat-icon navy"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg></div>
             <div class="stat-body">
               <span class="stat-label">Websites</span>
               <span class="stat-value" id="statWebsites">0</span>
               <span class="stat-sub">verbunden</span>
             </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon navy"><svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg></div>
-            <div class="stat-body">
-              <span class="stat-label">Content Zones</span>
-              <span class="stat-value" id="statZones">0</span>
-              <span class="stat-sub">definiert</span>
-            </div>
-          </div>
-          <div class="stat-card">
+          <div class="stat-card" onclick="navigateTo('zones')" style="cursor:pointer">
             <div class="stat-icon green"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
             <div class="stat-body">
-              <span class="stat-label">AI Jobs heute</span>
-              <span class="stat-value" id="statJobs">0</span>
-              <span class="stat-sub">ausgeführt</span>
+              <span class="stat-label">Analysiert</span>
+              <span class="stat-value" id="statAnalyzed">0</span>
+              <span class="stat-sub">Websites</span>
             </div>
           </div>
-          <div class="stat-card">
-            <div class="stat-icon orange"><svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg></div>
+          <div class="stat-card" onclick="navigateTo('ai-lab')" style="cursor:pointer">
+            <div class="stat-icon orange"><svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg></div>
             <div class="stat-body">
-              <span class="stat-label">Texte generiert</span>
+              <span class="stat-label">AI Texte</span>
               <span class="stat-value" id="statGenerated">0</span>
-              <span class="stat-sub">gesamt</span>
+              <span class="stat-sub">generiert</span>
             </div>
           </div>
         </div>
@@ -165,52 +182,52 @@
         <div class="dashboard-grid">
           <div class="card">
             <div class="card-header">
-              <h3>Letzte AI-Aktivitäten</h3>
+              <h3>Letzte Aktivitäten</h3>
               <span class="badge badge-live">Live</span>
             </div>
             <div class="activity-list" id="activityList">
               <div class="empty-state" style="padding:28px">
-                <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
-                <h4>Noch keine Aktivitäten</h4>
-                <p>Sobald die AI arbeitet, siehst du hier alle Aktionen in Echtzeit.</p>
+                <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/></svg>
+                <h4>Starte mit der Firmensuche</h4>
+                <p>Suche nach Unternehmen oben oder unter "Firmensuche" — alle Aktionen erscheinen hier.</p>
               </div>
             </div>
           </div>
 
           <div class="card">
-            <div class="card-header"><h3>Einrichtung</h3></div>
+            <div class="card-header"><h3>So funktioniert's</h3></div>
             <div class="quickstart-steps" id="quickstartSteps">
               <div class="step" id="step1">
                 <div class="step-number"><span>1</span></div>
                 <div class="step-body">
-                  <strong>Website verbinden</strong>
-                  <p>Domain eintragen, API-Key erhalten.</p>
+                  <strong>Firma finden</strong>
+                  <p>Suche nach Branche + Ort — Firmendaten werden automatisch geladen.</p>
                 </div>
-                <button class="btn btn-sm btn-primary" onclick="navigateTo('websites')">Starten</button>
+                <button class="btn btn-sm btn-primary" onclick="navigateTo('search')">Suchen</button>
               </div>
               <div class="step" id="step2">
                 <div class="step-number"><span>2</span></div>
                 <div class="step-body">
-                  <strong>Snippet einbinden</strong>
-                  <p>JS-Code in den &lt;head&gt; einfügen.</p>
+                  <strong>Website analysieren</strong>
+                  <p>SEO-Score, Meta-Tags, Ladezeit — automatisch geprüft.</p>
                 </div>
-                <button class="btn btn-sm btn-secondary" onclick="navigateTo('snippet')">Snippet</button>
+                <button class="btn btn-sm btn-secondary" onclick="navigateTo('search')">Analyse</button>
               </div>
               <div class="step" id="step3">
                 <div class="step-number"><span>3</span></div>
                 <div class="step-body">
-                  <strong>Content Zones anlegen</strong>
-                  <p>Bereiche markieren, die die KI ändert.</p>
+                  <strong>Als Website verbinden</strong>
+                  <p>Firma mit einem Klick als Website-Projekt speichern.</p>
                 </div>
-                <button class="btn btn-sm btn-secondary" onclick="navigateTo('zones')">Zones</button>
+                <button class="btn btn-sm btn-secondary" onclick="navigateTo('websites')">Websites</button>
               </div>
               <div class="step" id="step4">
                 <div class="step-number"><span>4</span></div>
                 <div class="step-body">
-                  <strong>AI automatisch starten</strong>
-                  <p>Inhalte nach Zeitplan aktualisieren.</p>
+                  <strong>KI-Inhalte generieren</strong>
+                  <p>AI erstellt SEO-Texte, Headlines, Meta — automatisch.</p>
                 </div>
-                <button class="btn btn-sm btn-secondary" onclick="navigateTo('ai-jobs')">Planen</button>
+                <button class="btn btn-sm btn-secondary" onclick="navigateTo('ai-lab')">AI Labor</button>
               </div>
             </div>
           </div>
