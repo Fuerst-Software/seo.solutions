@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
@@ -522,31 +523,34 @@ def search_osm(query, location, radius):
 
         query_lower = (query or "").lower().strip()
 
-        # ALLE Firmen im Umkreis laden (craft, shop, office, amenity)
-        lines = [
-            f'node["craft"]["name"](around:{radius},{lat},{lon});',
-            f'node["shop"]["name"](around:{radius},{lat},{lon});',
-            f'node["office"]["name"](around:{radius},{lat},{lon});',
-            f'node["amenity"]["name"](around:{radius},{lat},{lon});',
-            f'way["craft"]["name"](around:{radius},{lat},{lon});',
-            f'way["shop"]["name"](around:{radius},{lat},{lon});',
-            f'way["office"]["name"](around:{radius},{lat},{lon});',
-        ]
-
-        # Bei Branche: zusätzlich spezifische Tag-Suche
+        # Radius begrenzen um Timeouts zu vermeiden
+        safe_radius = min(radius, 15000)
         matched_tags = []
+
         if query_lower:
+            # MIT Branche: gezielte Tag-Suche + Name-Suche
+            lines = []
             for keyword, mappings in BRANCH_TO_OSM.items():
                 if keyword in query_lower or query_lower in keyword:
                     for tag_key, tag_val in mappings:
                         if tag_val:
-                            lines.insert(0, f'node["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
-                            lines.insert(1, f'way["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                            lines.append(f'node["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                            lines.append(f'way["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
                             matched_tags.append(f"{tag_key}={tag_val}")
+            lines.append(f'node["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+            lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
+            lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
+        else:
+            # OHNE Branche: alle Firmen, aber getrennte Queries um Timeouts zu vermeiden
+            lines = [
+                f'node["craft"]["name"](around:{safe_radius},{lat},{lon});',
+                f'node["shop"]["name"](around:{safe_radius},{lat},{lon});',
+                f'node["office"]["name"](around:{safe_radius},{lat},{lon});',
+            ]
 
         overpass_body = "\n".join(lines)
-        overpass_query = f"[out:json][timeout:30];\n(\n{overpass_body}\n);\nout center 500;"
-        print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters")
+        overpass_query = f"[out:json][timeout:25];\n(\n{overpass_body}\n);\nout center 300;"
+        print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters, radius={safe_radius if not query_lower else radius}")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
@@ -865,35 +869,42 @@ def search_businesses():
         except Exception as e:
             print(f"[SEARCH] Error in {source_name}: {e}")
 
-    # Tiefe Website-Discovery für ALLE Firmen ohne Website
+    # PARALLEL: Website-Discovery für Firmen ohne Website
     no_site = [b for b in all_results if not b.get("website")]
     if no_site and discover:
-        print(f"[SEARCH] Deep website discovery for {len(no_site)} firms...")
-        for biz in no_site:
-            found_url = deep_discover_website(
-                name=biz["name"],
-                address=biz.get("address", ""),
-                phone=biz.get("phone", ""),
-                email=biz.get("email", ""),
-                location=location,
-            )
-            if found_url:
-                biz["website"] = found_url
-                biz["websiteDiscovered"] = True
+        print(f"[SEARCH] Parallel website discovery for {len(no_site)} firms...")
+        def _discover(biz):
+            return biz, deep_discover_website(biz["name"], biz.get("address",""), biz.get("phone",""), biz.get("email",""), location)
+        with ThreadPoolExecutor(max_workers=5) as pool:
+            futures = [pool.submit(_discover, b) for b in no_site[:20]]
+            for f in as_completed(futures):
+                try:
+                    biz, url = f.result()
+                    if url:
+                        biz["website"] = url
+                        biz["websiteDiscovered"] = True
+                except Exception:
+                    pass
 
-    # Sofortige Website-Analyse für alle Ergebnisse
+    # PARALLEL: Website-Analyse
     if analyze:
         with_site = [b for b in all_results if b.get("website")]
-        print(f"[SEARCH] Analyzing {len(with_site)} websites...")
+        print(f"[SEARCH] Parallel analyzing {len(with_site)} websites...")
+        def _analyze(biz):
+            return biz, quick_analyze(biz["website"])
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            futures = [pool.submit(_analyze, b) for b in with_site]
+            for f in as_completed(futures):
+                try:
+                    biz, analysis = f.result()
+                    biz["seoScore"] = analysis.get("seoScore", 0)
+                    biz["siteOnline"] = analysis.get("online", False)
+                    biz["siteTitle"] = analysis.get("title", "")
+                    biz["hasWebsite"] = True
+                except Exception:
+                    pass
         for biz in all_results:
-            website = biz.get("website", "")
-            if website:
-                analysis = quick_analyze(website)
-                biz["seoScore"] = analysis.get("seoScore", 0)
-                biz["siteOnline"] = analysis.get("online", False)
-                biz["siteTitle"] = analysis.get("title", "")
-                biz["hasWebsite"] = True
-            else:
+            if not biz.get("website"):
                 biz["hasWebsite"] = False
                 biz["seoScore"] = 0
                 biz["siteOnline"] = False
