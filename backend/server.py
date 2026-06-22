@@ -254,13 +254,6 @@ def analyze_website():
     return jsonify(result)
 
 
-# ===== SERVE FRONTEND (catch-all — must be last) =====
-
-@app.route("/<path:filename>")
-def serve_static(filename):
-    return send_from_directory(str(ROOT), filename)
-
-
 # ===== WEBSITES =====
 
 @app.get("/api/websites")
@@ -512,6 +505,13 @@ def serve_embed():
     embed_path = ROOT / "snippet" / "embed.js"
     js = embed_path.read_text(encoding="utf-8").replace("__API_KEY__", api_key)
     return app.response_class(js, mimetype="application/javascript")
+
+
+# ===== SERVE FRONTEND (catch-all — must be last) =====
+
+@app.route("/<path:filename>")
+def serve_static(filename):
+    return send_from_directory(str(ROOT), filename)
 
 
 # ===== START =====

@@ -1010,7 +1010,12 @@ function addBusinessAsWebsite(biz) {
 }
 
 async function analyzeWebsite(url) {
-  showToast('Website wird analysiert...', 'info');
+  openModal('analyzeModal');
+  document.getElementById('analyzeModalTitle').textContent = `Analyse: ${url}`;
+  document.getElementById('analyzeModalBody').innerHTML = `<div style="display:flex;justify-content:center;align-items:center;gap:12px;padding:40px;color:var(--ff-blue)">
+    <div class="spinner" style="border-color:rgba(11,92,255,.3);border-top-color:var(--ff-blue)"></div>
+    Website wird analysiert...
+  </div>`;
   try {
     const res = await fetch('/api/websites/analyze', {
       method: 'POST',
@@ -1019,8 +1024,54 @@ async function analyzeWebsite(url) {
     });
     const data = await res.json();
     if (data.error) throw new Error(data.error);
-    showToast(`Analyse abgeschlossen! Score: ${data.score || '—'}/100`, 'success');
+
+    const s = data.seoScore || 0;
+    const scoreColor = s >= 70 ? 'var(--ff-success)' : s >= 40 ? '#ea580c' : 'var(--ff-danger)';
+    const imgs = data.images || {};
+    const checks = [
+      { ok: !!data.title, label: data.title ? `Title: "${escHtml(data.title.slice(0, 60))}"` : 'Kein <title> Tag' },
+      { ok: !!data.metaDescription, label: data.metaDescription ? `Meta: "${escHtml(data.metaDescription.slice(0, 80))}..."` : 'Keine Meta Description' },
+      { ok: data.h1Tags?.length === 1, label: data.h1Tags?.length ? `${data.h1Tags.length} H1-Tag(s): "${escHtml((data.h1Tags[0]||'').slice(0,50))}"` : 'Kein H1-Tag' },
+      { ok: data.hasViewport, label: data.hasViewport ? 'Mobile-optimiert (Viewport)' : 'Kein Viewport Meta — nicht mobil-optimiert' },
+      { ok: data.wordCount >= 300, label: `${data.wordCount || 0} Wörter` + (data.wordCount < 300 ? ' (mind. 300 empfohlen)' : '') },
+      { ok: imgs.withoutAlt === 0, label: `${imgs.total || 0} Bilder, ${imgs.withoutAlt || 0} ohne Alt-Text` },
+      { ok: data.internalLinks >= 3, label: `${data.internalLinks || 0} interne / ${data.externalLinks || 0} externe Links` },
+      { ok: data.loadTime < 3, label: `Ladezeit: ${data.loadTime || '?'}s` },
+    ];
+
+    document.getElementById('analyzeModalBody').innerHTML = `
+      <div style="display:flex;align-items:center;gap:24px;margin-bottom:20px">
+        <div class="score-ring" style="flex-shrink:0">
+          <svg viewBox="0 0 110 110" width="100" height="100">
+            <circle class="score-ring-track" cx="55" cy="55" r="44"/>
+            <circle class="score-ring-fill" cx="55" cy="55" r="44"
+              stroke-dasharray="276.46" stroke-dashoffset="${276.46 - (276.46 * s / 100)}"
+              style="stroke:${scoreColor}"/>
+          </svg>
+          <div class="score-ring-value">
+            <strong style="color:${scoreColor};font-size:22px">${s}</strong>
+            <span>SEO</span>
+          </div>
+        </div>
+        <div>
+          <h3 style="font-size:16px;font-weight:950;color:var(--ff-navy);margin-bottom:4px">${escHtml(data.title || url)}</h3>
+          <div style="font-size:12px;color:var(--ff-muted)">${escHtml(url)}</div>
+        </div>
+      </div>
+      <div class="seo-check-list">
+        ${checks.map(c => `<div class="seo-check-item ${c.ok ? 'pass' : 'fail'}">
+          <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor">
+            ${c.ok ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>' : '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>'}
+          </svg>
+          ${c.label}
+        </div>`).join('')}
+      </div>`;
+
+    addActivity({ title: `Website analysiert: ${data.title || url}`, meta: `Score: ${s}/100`, status: s >= 50 ? 'success' : 'error', color: scoreColor });
+    saveState();
+    showToast(`Analyse abgeschlossen! Score: ${s}/100`, 'success');
   } catch (e) {
+    document.getElementById('analyzeModalBody').innerHTML = `<div class="seo-check-item fail" style="margin:16px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
     showToast('Analyse-Fehler: ' + e.message, 'error');
   }
 }
