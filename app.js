@@ -83,10 +83,10 @@ document.querySelectorAll('.nav-item').forEach(item => {
 
 // ===== DASHBOARD =====
 function renderDashboard() {
-  document.getElementById('statWebsites').textContent = state.websites.length;
   document.getElementById('statSearches').textContent = state.stats.searches || 0;
+  document.getElementById('statFirmen').textContent = state.firmen.length;
   document.getElementById('statAnalyzed').textContent = state.stats.analyzed || 0;
-  document.getElementById('statGenerated').textContent = state.stats.generated || 0;
+  document.getElementById('statExported').textContent = state.stats.exported || 0;
 
   updateNavBadges();
   renderActivities();
@@ -137,10 +137,10 @@ function renderActivities() {
 }
 
 function updateQuickstart() {
-  if (state.websites.length > 0) markStep('step1');
-  if (state.websites.length > 0) markStep('step2');
-  if (state.zones.length > 0) markStep('step3');
-  if (state.jobs.length > 0) markStep('step4');
+  if ((state.stats.searches || 0) > 0) markStep('step1');
+  if ((state.stats.analyzed || 0) > 0) markStep('step2');
+  if (state.firmen.length > 0) markStep('step3');
+  if ((state.stats.exported || 0) > 0) markStep('step4');
 }
 
 function markStep(id) {
@@ -1332,6 +1332,8 @@ function exportFirmen() {
   a.download = `seo-solutions-firmen-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
+  state.stats.exported = (state.stats.exported || 0) + 1;
+  saveState();
   showToast(`${state.firmen.length} Firmen als CSV exportiert!`, 'success');
 }
 
