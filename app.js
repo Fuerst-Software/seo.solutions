@@ -984,41 +984,53 @@ async function searchBusinesses() {
 
     results.innerHTML = sourceInfo + businesses.map((biz, i) => {
       const saved = state.firmen.some(f => f.name.toLowerCase() === biz.name.toLowerCase());
-      const stars = biz.rating ? '★'.repeat(Math.round(biz.rating)) + '☆'.repeat(5 - Math.round(biz.rating)) : '';
-      return `<div class="search-result-item" id="search-result-${i}">
-        <div class="search-result-favicon">${(biz.name || '?')[0].toUpperCase()}</div>
+      const hasWeb = biz.hasWebsite && biz.website;
+      const online = biz.siteOnline;
+      const seo = biz.seoScore || 0;
+      const seoClass = !hasWeb ? '' : online ? (seo >= 70 ? 'badge-success' : seo >= 40 ? 'badge-pending' : 'badge-error') : 'badge-error';
+      const seoText = !hasWeb ? '🚫 Keine Website' : online ? `SEO ${seo}/100` : '⚠️ Offline';
+      const webStatus = !hasWeb
+        ? '<span style="color:var(--ff-danger);font-weight:850;font-size:12px">🚫 Keine Website vorhanden</span>'
+        : online
+        ? `<span style="color:var(--ff-success);font-weight:850;font-size:12px">✅ Website online</span>${biz.siteTitle ? ` — <span style="color:var(--ff-muted);font-size:11px">${escHtml(biz.siteTitle)}</span>` : ''}`
+        : '<span style="color:var(--ff-danger);font-weight:850;font-size:12px">⚠️ Website offline/nicht erreichbar</span>';
+
+      return `<div class="search-result-item" id="search-result-${i}" style="${!hasWeb ? 'opacity:0.6' : ''}">
+        <div class="search-result-favicon" style="background:${hasWeb && online ? (seo >= 70 ? 'var(--ff-success)' : seo >= 40 ? '#ea580c' : 'var(--ff-danger)') : 'var(--ff-muted)'};color:#fff">
+          ${hasWeb && online ? seo : (biz.name || '?')[0].toUpperCase()}
+        </div>
         <div class="search-result-body">
           <div class="search-result-name">${escHtml(biz.name)}</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:2px">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:3px">
             ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
             ${biz.source ? `<span class="badge badge-blue" style="font-size:9px;padding:2px 6px">${escHtml(biz.source)}</span>` : ''}
-            <span class="badge" id="seo-badge-${i}" style="display:none"></span>
+            <span class="badge ${seoClass}" style="font-size:10px">${seoText}</span>
           </div>
+          <div style="margin-top:4px">${webStatus}</div>
           <div class="search-result-meta">
             ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
             ${biz.phone ? `<span>📞 ${escHtml(biz.phone)}</span>` : ''}
             ${biz.email ? `<span>✉ ${escHtml(biz.email)}</span>` : ''}
             ${biz.website ? `<span class="search-result-url">🌐 ${escHtml(biz.website)}</span>` : ''}
           </div>
-          ${stars ? `<div class="search-result-rating">${stars} <span>${biz.rating.toFixed(1)}</span></div>` : ''}
         </div>
         <div class="search-result-actions">
           <button class="btn btn-sm ${saved ? 'btn-success' : 'btn-primary'}" id="save-btn-${i}"
             onclick='saveFirma(${i})' ${saved ? 'disabled' : ''}>
             ${saved ? '✓ Gespeichert' : '★ Speichern'}
           </button>
-          ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>SEO Analyse</button>` : ''}
+          ${hasWeb && online ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite("${escHtml(biz.website)}")'>Details</button>` : ''}
         </div>
       </div>`;
     }).join('');
 
     state.stats.searches = (state.stats.searches || 0) + 1;
-    addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Ergebnisse aus ${sources.length} Portalen`, status: 'success', color: '#0b5cff' });
+    state.stats.analyzed = (state.stats.analyzed || 0) + businesses.filter(b => b.hasWebsite).length;
+    addActivity({ title: `Firmensuche: "${query}" in "${location}"`, meta: `${businesses.length} Firmen, ${businesses.filter(b=>b.siteOnline).length} mit Website`, status: 'success', color: '#0b5cff' });
     saveState();
-    showToast(`${businesses.length} Firmen gefunden! Analyse läuft...`, 'success');
-
-    // Auto-Analyse für alle Firmen mit Website
-    autoAnalyzeResults(businesses);
+    const withSite = businesses.filter(b => b.siteOnline).length;
+    const noSite = businesses.filter(b => !b.hasWebsite).length;
+    showToast(`${businesses.length} Firmen — ${withSite} mit Website, ${noSite} ohne`, 'success');
   } catch (e) {
     results.innerHTML = `<div class="seo-check-item fail" style="margin:16px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
     showToast('Fehler bei der Suche: ' + e.message, 'error');

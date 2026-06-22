@@ -447,28 +447,67 @@ def search_herold_api(query, location):
     return results
 
 
+def quick_analyze(url):
+    """Schnelle Website-Analyse: nur Status + Title + Meta prüfen"""
+    result = {"hasWebsite": False, "online": False, "title": "", "seoScore": 0}
+    if not url:
+        return result
+    result["hasWebsite"] = True
+    try:
+        if not url.startswith(("http://", "https://")):
+            url = "https://" + url
+        resp = requests.get(url, timeout=8, headers={
+            "User-Agent": "Mozilla/5.0 (compatible; SEOSolutionsBot/1.0)"
+        })
+        result["online"] = resp.status_code == 200
+        if not result["online"]:
+            return result
+        soup = BeautifulSoup(resp.text, "html.parser")
+        title_tag = soup.find("title")
+        result["title"] = title_tag.get_text(strip=True)[:80] if title_tag else ""
+        meta_tag = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
+        meta = meta_tag.get("content", "")[:160] if meta_tag else ""
+        viewport = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.I)})
+        h1s = soup.find_all("h1")
+        words = len(soup.get_text(separator=" ", strip=True).split())
+        score = 0
+        if result["title"]: score += 20
+        if meta: score += 20
+        if h1s: score += 15
+        if viewport: score += 15
+        if words >= 200: score += 15
+        if words >= 500: score += 15
+        result["seoScore"] = score
+        result["metaDescription"] = meta
+        result["wordCount"] = words
+        result["hasH1"] = len(h1s) > 0
+        result["hasMobile"] = viewport is not None
+    except Exception:
+        result["online"] = False
+    return result
+
+
 @app.post("/api/search/businesses")
 def search_businesses():
     body = request.get_json() or {}
     query = body.get("query", "").strip()
     location = body.get("location", "").strip()
     radius = body.get("radius", 5000)
+    analyze = body.get("analyze", True)
 
     if not query or not location:
         return jsonify({"error": "query and location are required"}), 400
 
     all_results = []
     seen_names = set()
-    errors = []
 
     # Alle Portale abfragen
     sources_used = []
     for source_name, source_fn, source_args in [
-        ("Herold.at", search_herold, (query, location)),
-        ("Herold API", search_herold_api, (query, location)),
-        ("FirmenABC.at", search_firmenabc, (query, location)),
         ("WKO Firmen A-Z", search_wko, (query, location)),
         ("OpenStreetMap", search_osm, (query, location, radius)),
+        ("Herold.at", search_herold, (query, location)),
+        ("FirmenABC.at", search_firmenabc, (query, location)),
     ]:
         try:
             found = source_fn(*source_args)
@@ -482,21 +521,36 @@ def search_businesses():
             if count > 0:
                 sources_used.append(f"{source_name} ({count})")
         except Exception as e:
-            errors.append(f"{source_name}: {e}")
             print(f"[SEARCH] Error in {source_name}: {e}")
 
-    # Sortierung: Firmen mit Website+Telefon zuerst
+    # Sofortige Website-Analyse für alle Ergebnisse
+    if analyze:
+        print(f"[SEARCH] Analyzing {sum(1 for b in all_results if b.get('website'))} websites...")
+        for biz in all_results:
+            website = biz.get("website", "")
+            if website:
+                analysis = quick_analyze(website)
+                biz["seoScore"] = analysis.get("seoScore", 0)
+                biz["siteOnline"] = analysis.get("online", False)
+                biz["siteTitle"] = analysis.get("title", "")
+                biz["hasWebsite"] = True
+            else:
+                biz["hasWebsite"] = False
+                biz["seoScore"] = 0
+                biz["siteOnline"] = False
+
+    # Sortierung: Beste SEO-Scores zuerst, dann mit Website, dann Rest
     all_results.sort(key=lambda b: (
-        not b.get("website"),
-        not b.get("phone"),
-        not b.get("email"),
+        not b.get("hasWebsite"),
+        not b.get("siteOnline"),
+        -(b.get("seoScore") or 0),
         b["name"],
     ))
 
     print(f"[SEARCH] Total: {len(all_results)} from: {', '.join(sources_used) or 'keine Quellen'}")
 
     return jsonify({
-        "businesses": all_results[:60],
+        "businesses": all_results[:80],
         "count": len(all_results),
         "sources": sources_used or ["Keine Ergebnisse"],
     })
