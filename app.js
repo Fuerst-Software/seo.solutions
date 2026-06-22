@@ -1,6 +1,8 @@
 // ===== API CONFIG =====
-// Backend läuft auf dem iMac Server — Frontend wird über GitHub Pages ausgeliefert
-const API_BASE = 'http://10.0.0.230:3001';
+// Automatische Erkennung: wenn vom iMac geladen → relativ, sonst absolute URL
+const API_BASE = window.location.hostname === 'localhost' || window.location.port === '3001' || window.location.hostname === '10.0.0.230'
+  ? ''
+  : 'http://10.0.0.230:3001';
 
 // ===== STATE =====
 const state = {
