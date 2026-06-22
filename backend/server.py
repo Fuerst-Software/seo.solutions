@@ -502,7 +502,7 @@ BRANCH_TO_OSM = {
 
 
 def search_osm(query, location, radius):
-    """OpenStreetMap / Overpass — mit Branchen-Mapping"""
+    """OpenStreetMap / Overpass — ALLE Firmen im Umkreis, optional nach Branche filtern"""
     results = []
     try:
         geo_resp = requests.get(
@@ -518,32 +518,35 @@ def search_osm(query, location, radius):
 
         lat = float(geo_data[0]["lat"])
         lon = float(geo_data[0]["lon"])
-        print(f"[OSM] Location: {lat}, {lon} — Radius: {radius}m")
+        print(f"[OSM] Location: {lat}, {lon} — Radius: {radius}m — Query: '{query}'")
 
-        query_lower = query.lower().strip()
+        query_lower = (query or "").lower().strip()
 
-        # Branche → OSM-Tag Queries (node + way, KEIN nwr!)
-        lines = []
+        # ALLE Firmen im Umkreis laden (craft, shop, office, amenity)
+        lines = [
+            f'node["craft"]["name"](around:{radius},{lat},{lon});',
+            f'node["shop"]["name"](around:{radius},{lat},{lon});',
+            f'node["office"]["name"](around:{radius},{lat},{lon});',
+            f'node["amenity"]["name"](around:{radius},{lat},{lon});',
+            f'way["craft"]["name"](around:{radius},{lat},{lon});',
+            f'way["shop"]["name"](around:{radius},{lat},{lon});',
+            f'way["office"]["name"](around:{radius},{lat},{lon});',
+        ]
+
+        # Bei Branche: zusätzlich spezifische Tag-Suche
         matched_tags = []
-        for keyword, mappings in BRANCH_TO_OSM.items():
-            if keyword in query_lower or query_lower in keyword:
-                for tag_key, tag_val in mappings:
-                    if tag_val:
-                        lines.append(f'node["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
-                        lines.append(f'way["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
-                        matched_tags.append(f"{tag_key}={tag_val}")
-
-        # Name-basierte Suche
-        lines.append(f'node["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
-        lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
-        lines.append(f'node["name"~"{query_lower}",i]["office"](around:{radius},{lat},{lon});')
-        lines.append(f'node["name"~"{query_lower}",i]["amenity"](around:{radius},{lat},{lon});')
-        lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{radius},{lat},{lon});')
-        lines.append(f'way["name"~"{query_lower}",i]["shop"](around:{radius},{lat},{lon});')
+        if query_lower:
+            for keyword, mappings in BRANCH_TO_OSM.items():
+                if keyword in query_lower or query_lower in keyword:
+                    for tag_key, tag_val in mappings:
+                        if tag_val:
+                            lines.insert(0, f'node["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                            lines.insert(1, f'way["{tag_key}"="{tag_val}"]["name"](around:{radius},{lat},{lon});')
+                            matched_tags.append(f"{tag_key}={tag_val}")
 
         overpass_body = "\n".join(lines)
-        overpass_query = f"[out:json][timeout:30];\n(\n{overpass_body}\n);\nout center 200;"
-        print(f"[OSM] Tags: {matched_tags or 'name-only'}, {len(lines)} filters")
+        overpass_query = f"[out:json][timeout:30];\n(\n{overpass_body}\n);\nout center 500;"
+        print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
@@ -553,6 +556,9 @@ def search_osm(query, location, radius):
         ov_data = ov_resp.json()
         elements = ov_data.get("elements", [])
         print(f"[OSM] Raw elements: {len(elements)}")
+
+        # Branche-Filter Keywords
+        query_parts = [p for p in query_lower.split() if len(p) > 2] if query_lower else []
 
         seen = set()
         for el in elements:
@@ -570,6 +576,26 @@ def search_osm(query, location, radius):
                 tags.get("craft") or tags.get("shop") or tags.get("office")
                 or tags.get("amenity") or tags.get("tourism") or ""
             )
+            category_clean = category.replace("_", " ").title() if category else ""
+
+            # Branche-Filter: wenn Branche angegeben, muss sie matchen
+            if query_parts:
+                all_vals = " ".join(str(v) for v in tags.values()).lower()
+                name_lower = name.lower()
+                if not any(p in all_vals or p in name_lower for p in query_parts):
+                    # Prüfe auch ob die OSM-Kategorie passt
+                    if matched_tags:
+                        tag_match = False
+                        for mt in matched_tags:
+                            tk, tv = mt.split("=")
+                            if tags.get(tk) == tv:
+                                tag_match = True
+                                break
+                        if not tag_match:
+                            continue
+                    else:
+                        continue
+
             addr = " ".join(filter(None, [
                 tags.get("addr:street", ""), tags.get("addr:housenumber", ""),
                 tags.get("addr:postcode", ""), tags.get("addr:city", ""),
@@ -582,10 +608,10 @@ def search_osm(query, location, radius):
                 "email": tags.get("email") or tags.get("contact:email", ""),
                 "fax": tags.get("fax", ""),
                 "operator": tags.get("operator", ""),
-                "category": category.replace("_", " ").title() if category else query,
+                "category": category_clean or query or "Unternehmen",
                 "rating": None, "source": "OpenStreetMap",
             })
-        print(f"[OSM] Matched: {len(results)} businesses")
+        print(f"[OSM] Matched: {len(results)} of {len(elements)} elements")
     except Exception as e:
         print(f"[OSM] Error: {e}")
     return results
@@ -795,25 +821,28 @@ def quick_analyze(url):
 @app.post("/api/search/businesses")
 def search_businesses():
     body = request.get_json() or {}
-    query = body.get("query", "").strip()
-    location = body.get("location", "").strip()
+    query = body.get("query", "").strip()       # Branche — OPTIONAL
+    location = body.get("location", "").strip()  # Ort — PFLICHT
     radius = body.get("radius", 5000)
     analyze = body.get("analyze", True)
 
-    if not query or not location:
-        return jsonify({"error": "query and location are required"}), 400
+    if not location:
+        return jsonify({"error": "Ort / Stadt ist erforderlich"}), 400
 
     all_results = []
     seen_names = set()
 
-    # Alle Portale abfragen
+    # Alle Portale abfragen — wenn keine Branche, hole ALLE Firmen
     sources_used = []
-    for source_name, source_fn, source_args in [
-        ("WKO Firmen A-Z", search_wko, (query, location)),
-        ("OpenStreetMap", search_osm, (query, location, radius)),
-        ("Herold.at", search_herold, (query, location)),
-        ("FirmenABC.at", search_firmenabc, (query, location)),
-    ]:
+    source_list = []
+    if query:
+        source_list.append(("WKO Firmen A-Z", search_wko, (query, location)))
+    source_list.append(("OpenStreetMap", search_osm, (query or "", location, radius)))
+    if query:
+        source_list.append(("Herold.at", search_herold, (query, location)))
+        source_list.append(("FirmenABC.at", search_firmenabc, (query, location)))
+
+    for source_name, source_fn, source_args in source_list:
         try:
             found = source_fn(*source_args)
             count = 0

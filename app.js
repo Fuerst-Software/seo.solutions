@@ -96,7 +96,7 @@ function renderDashboard() {
 function dashQuickSearch() {
   const q = document.getElementById('dashSearchQuery').value.trim();
   const loc = document.getElementById('dashSearchLocation').value.trim();
-  if (!q || !loc) { showToast('Bitte Branche und Ort eingeben.', 'error'); return; }
+  if (!loc) { showToast('Bitte Ort eingeben.', 'error'); return; }
   navigateTo('search');
   setTimeout(() => {
     document.getElementById('searchQuery').value = q;
@@ -946,7 +946,6 @@ async function searchBusinesses() {
   const query = document.getElementById('searchQuery').value.trim();
   const location = document.getElementById('searchLocation').value.trim();
   const radiusKm = parseInt(document.getElementById('searchRadius').value, 10) || 5;
-  if (!query) { showToast('Bitte Branche / Suchbegriff eingeben.', 'error'); return; }
   if (!location) { showToast('Bitte Ort / Stadt eingeben.', 'error'); return; }
 
   const results = document.getElementById('searchResults');
