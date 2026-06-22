@@ -73,181 +73,163 @@ OSM_HEADERS = {"User-Agent": "seo.solutions/1.0 (contact@fuerst-software.com)"}
 
 
 def search_herold(query, location):
-    """Herold.at — Österreichisches Telefonbuch / Firmenverzeichnis"""
+    """Herold.at — Gelbe Seiten Österreich"""
     results = []
     try:
-        search_term = f"{query} {location}".strip()
-        url = "https://www.herold.at/gelbe-seiten/was_{}/wo_{}/".format(
-            requests.utils.quote(query),
-            requests.utils.quote(location),
-        )
-        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=12)
+        q_slug = query.lower().replace(" ", "-").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+        l_slug = location.lower().split(",")[0].strip().replace(" ", "-").replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+        url = f"https://www.herold.at/gelbe-seiten/was_{q_slug}/wo_{l_slug}/"
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15)
         if resp.status_code != 200:
             return results
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        for item in soup.select("[data-testid='result-item'], .result-item, .listing-item"):
-            name = ""
-            name_el = item.select_one("h2, h3, .listing-name, [data-testid='result-title']")
-            if name_el:
-                name = name_el.get_text(strip=True)
-            if not name:
+        for item in soup.find_all(["article", "div", "li"], class_=lambda c: c and any(x in (c if isinstance(c, str) else " ".join(c)) for x in ["result", "listing", "entry", "company", "item"])):
+            name_el = item.find(["h2", "h3", "h4", "a"], class_=lambda c: c and any(x in str(c) for x in ["name", "title", "heading"]))
+            if not name_el:
+                name_el = item.find(["h2", "h3"])
+            name = name_el.get_text(strip=True) if name_el else ""
+            if not name or len(name) < 2:
                 continue
 
             address = ""
-            addr_el = item.select_one(".address, .listing-address, [data-testid='result-address']")
-            if addr_el:
-                address = addr_el.get_text(strip=True)
+            for sel in [".address", "[class*=address]", "[class*=location]", "address"]:
+                addr_el = item.select_one(sel)
+                if addr_el:
+                    address = addr_el.get_text(strip=True)
+                    break
 
             phone = ""
-            phone_el = item.select_one("a[href^='tel:'], .phone, .listing-phone")
+            phone_el = item.find("a", href=lambda h: h and h.startswith("tel:"))
             if phone_el:
-                phone = phone_el.get_text(strip=True)
+                phone = phone_el.get_text(strip=True) or phone_el["href"].replace("tel:", "")
 
             website = ""
-            web_el = item.select_one("a[data-testid='result-website'], a.website-link, a[href*='redirect']")
-            if web_el:
-                href = web_el.get("href", "")
-                if "herold.at" not in href and href.startswith("http"):
-                    website = href
-
-            category = ""
-            cat_el = item.select_one(".category, .listing-category, [data-testid='result-category']")
-            if cat_el:
-                category = cat_el.get_text(strip=True)
-
-            results.append({
-                "name": name,
-                "address": address or location,
-                "phone": phone,
-                "website": website,
-                "email": "",
-                "category": category or query,
-                "rating": None,
-                "source": "Herold.at",
-            })
-    except Exception:
-        pass
-    return results
-
-
-def search_firmenabc(query, location):
-    """FirmenABC.at — Österreichisches Firmenverzeichnis"""
-    results = []
-    try:
-        url = "https://www.firmenabc.at/result.aspx"
-        params = {"what": query, "where": location}
-        resp = requests.get(url, params=params, headers=SEARCH_HEADERS, timeout=12)
-        if resp.status_code != 200:
-            return results
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        for item in soup.select(".result-item, .company-item, .search-result, article"):
-            name = ""
-            name_el = item.select_one("h2, h3, .company-name, .result-title a")
-            if name_el:
-                name = name_el.get_text(strip=True)
-            if not name:
-                continue
-
-            address = ""
-            addr_el = item.select_one(".address, .company-address, .result-address")
-            if addr_el:
-                address = addr_el.get_text(strip=True)
-
-            phone = ""
-            phone_el = item.select_one("a[href^='tel:'], .phone, .company-phone")
-            if phone_el:
-                phone = phone_el.get_text(strip=True)
-
-            website = ""
-            for a in item.select("a[href]"):
-                href = a.get("href", "")
-                if href.startswith("http") and "firmenabc.at" not in href:
+            for a in item.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("http") and "herold.at" not in href and "google" not in href:
                     website = href
                     break
 
             results.append({
-                "name": name,
-                "address": address or location,
-                "phone": phone,
-                "website": website,
-                "email": "",
-                "category": query,
-                "rating": None,
-                "source": "FirmenABC.at",
+                "name": name, "address": address or location, "phone": phone,
+                "website": website, "email": "", "category": query,
+                "rating": None, "source": "Herold.at",
             })
-    except Exception:
-        pass
-    return results
+    except Exception as e:
+        print(f"[Herold] Error: {e}")
+    return results[:20]
 
 
-def search_wko(query, location):
-    """WKO Firmen A-Z — Wirtschaftskammer Österreich"""
+def search_firmenabc(query, location):
+    """FirmenABC.at — Firmenverzeichnis"""
     results = []
     try:
-        url = "https://firmen.wko.at/SearchSimple.aspx"
-        params = {"searchterm": query, "location": location}
-        resp = requests.get(url, params=params, headers=SEARCH_HEADERS, timeout=12)
+        url = f"https://www.firmenabc.at/ergebnis/{requests.utils.quote(query)}_{requests.utils.quote(location)}"
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15)
         if resp.status_code != 200:
-            url2 = f"https://firmen.wko.at/suche_{requests.utils.quote(query)}_{requests.utils.quote(location)}"
-            resp = requests.get(url2, headers=SEARCH_HEADERS, timeout=12)
+            url = f"https://www.firmenabc.at/result.aspx?what={requests.utils.quote(query)}&where={requests.utils.quote(location)}"
+            resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15)
             if resp.status_code != 200:
                 return results
         soup = BeautifulSoup(resp.text, "html.parser")
 
-        for item in soup.select(".company-result, .result-item, .search-result-item, .company"):
-            name = ""
-            name_el = item.select_one("h2, h3, .company-name, a.name")
-            if name_el:
-                name = name_el.get_text(strip=True)
-            if not name:
+        for item in soup.find_all(["article", "div", "li"], class_=lambda c: c and any(x in str(c) for x in ["result", "company", "entry", "item"])):
+            name_el = item.find(["h2", "h3", "h4"])
+            if not name_el:
+                name_el = item.find("a", class_=lambda c: c and "name" in str(c))
+            name = name_el.get_text(strip=True) if name_el else ""
+            if not name or len(name) < 2:
                 continue
 
             address = ""
-            addr_el = item.select_one(".address, .company-address")
-            if addr_el:
-                address = addr_el.get_text(strip=True)
+            for cls in ["address", "addr", "location", "street"]:
+                addr_el = item.find(class_=lambda c: c and cls in str(c).lower())
+                if addr_el:
+                    address = addr_el.get_text(strip=True)
+                    break
 
             phone = ""
-            phone_el = item.select_one("a[href^='tel:'], .phone")
+            phone_el = item.find("a", href=lambda h: h and h.startswith("tel:"))
             if phone_el:
-                phone = phone_el.get_text(strip=True)
+                phone = phone_el.get_text(strip=True) or phone_el["href"].replace("tel:", "")
 
             website = ""
-            for a in item.select("a[href]"):
-                href = a.get("href", "")
-                if href.startswith("http") and "wko.at" not in href:
+            for a in item.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("http") and "firmenabc" not in href and "google" not in href:
+                    website = href
+                    break
+
+            results.append({
+                "name": name, "address": address or location, "phone": phone,
+                "website": website, "email": "", "category": query,
+                "rating": None, "source": "FirmenABC.at",
+            })
+    except Exception as e:
+        print(f"[FirmenABC] Error: {e}")
+    return results[:20]
+
+
+def search_wko(query, location):
+    """WKO Firmen A-Z — Wirtschaftskammer"""
+    results = []
+    try:
+        url = f"https://firmen.wko.at/suche_{requests.utils.quote(query)}/{requests.utils.quote(location)}"
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=15, allow_redirects=True)
+        if resp.status_code != 200:
+            return results
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        for item in soup.find_all(["article", "div", "li", "section"], class_=lambda c: c and any(x in str(c).lower() for x in ["result", "company", "entry", "firma", "item"])):
+            name_el = item.find(["h2", "h3", "h4"])
+            if not name_el:
+                name_el = item.find("a", class_=lambda c: c and any(x in str(c).lower() for x in ["name", "firma", "company"]))
+            name = name_el.get_text(strip=True) if name_el else ""
+            if not name or len(name) < 2:
+                continue
+
+            address = ""
+            for cls in ["address", "addr", "street", "location", "anschrift"]:
+                addr_el = item.find(class_=lambda c: c and cls in str(c).lower())
+                if addr_el:
+                    address = addr_el.get_text(strip=True)
+                    break
+
+            phone = ""
+            phone_el = item.find("a", href=lambda h: h and h.startswith("tel:"))
+            if phone_el:
+                phone = phone_el.get_text(strip=True) or phone_el["href"].replace("tel:", "")
+
+            website = ""
+            for a in item.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("http") and "wko.at" not in href and "google" not in href:
                     website = href
                     break
 
             email = ""
-            email_el = item.select_one("a[href^='mailto:']")
+            email_el = item.find("a", href=lambda h: h and h.startswith("mailto:"))
             if email_el:
-                email = email_el.get("href", "").replace("mailto:", "")
+                email = email_el["href"].replace("mailto:", "")
 
             results.append({
-                "name": name,
-                "address": address or location,
-                "phone": phone,
-                "website": website,
-                "email": email,
-                "category": query,
-                "rating": None,
-                "source": "WKO Firmen A-Z",
+                "name": name, "address": address or location, "phone": phone,
+                "website": website, "email": email, "category": query,
+                "rating": None, "source": "WKO Firmen A-Z",
             })
-    except Exception:
-        pass
-    return results
+    except Exception as e:
+        print(f"[WKO] Error: {e}")
+    return results[:20]
 
 
 def search_osm(query, location, radius):
-    """OpenStreetMap / Overpass API — weltweite Geodaten"""
+    """OpenStreetMap / Overpass — breite Suche"""
     results = []
     try:
         geo_resp = requests.get(
             "https://nominatim.openstreetmap.org/search",
-            params={"q": location, "format": "json", "limit": 1},
+            params={"q": location, "format": "json", "limit": 1, "addressdetails": 1},
             headers=OSM_HEADERS,
             timeout=10,
         )
@@ -259,24 +241,22 @@ def search_osm(query, location, radius):
         lon = float(geo_data[0]["lon"])
 
         overpass_query = f"""
-        [out:json][timeout:15];
+        [out:json][timeout:25];
         (
-          nwr["name"]["craft"~"."](around:{radius},{lat},{lon});
-          nwr["name"]["shop"~"."](around:{radius},{lat},{lon});
-          nwr["name"]["office"~"."](around:{radius},{lat},{lon});
-          nwr["name"]["amenity"~"."](around:{radius},{lat},{lon});
+          nwr["name"](around:{radius},{lat},{lon});
         );
-        out center 80;
+        out center 200;
         """
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
             headers=OSM_HEADERS,
-            timeout=20,
+            timeout=30,
         )
         ov_data = ov_resp.json()
 
         query_lower = query.lower()
+        query_parts = query_lower.split()
         seen = set()
 
         for el in ov_data.get("elements", []):
@@ -288,10 +268,13 @@ def search_osm(query, location, radius):
             category = (
                 tags.get("craft") or tags.get("shop") or tags.get("office")
                 or tags.get("amenity") or tags.get("tourism") or tags.get("leisure")
-                or ""
+                or tags.get("industrial") or tags.get("building") or ""
             )
             all_vals = " ".join(str(v) for v in tags.values()).lower()
-            if query_lower not in all_vals and query_lower not in name.lower():
+            name_lower = name.lower()
+
+            match = any(part in all_vals or part in name_lower for part in query_parts)
+            if not match:
                 continue
 
             key = name.lower().strip()
@@ -305,17 +288,15 @@ def search_osm(query, location, radius):
             ])).strip()
 
             results.append({
-                "name": name,
-                "address": addr or location,
+                "name": name, "address": addr or location,
                 "phone": tags.get("phone") or tags.get("contact:phone", ""),
                 "website": tags.get("website") or tags.get("contact:website", ""),
                 "email": tags.get("email") or tags.get("contact:email", ""),
-                "category": category.replace("_", " ").title() if category else "",
-                "rating": None,
-                "source": "OpenStreetMap",
+                "category": category.replace("_", " ").title() if category else query,
+                "rating": None, "source": "OpenStreetMap",
             })
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[OSM] Error: {e}")
     return results
 
 
