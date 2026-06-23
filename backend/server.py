@@ -5,6 +5,8 @@ import random
 import string
 import time
 import re
+import threading
+import queue
 from pathlib import Path
 from datetime import datetime
 from urllib.parse import urlparse
@@ -12,7 +14,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, jsonify, request, send_from_directory, abort
+from flask import Flask, jsonify, request, send_from_directory, abort, Response, stream_with_context
 from flask_cors import CORS
 
 # Make sure the project root is on the path
@@ -25,6 +27,56 @@ app = Flask(__name__, static_folder=str(ROOT), static_url_path="")
 CORS(app, origins=["*"])
 
 DB_FILE = ROOT / "db" / "data.json"
+CACHE_FILE = ROOT / "db" / "cache.json"
+CACHE_TTL = 24 * 3600  # 24h
+_cache_lock = threading.Lock()
+
+
+# ===== ANALYSIS CACHE (URL -> result + timestamp, 24h gültig) =====
+
+def _load_cache() -> dict:
+    if not CACHE_FILE.exists():
+        return {}
+    try:
+        with open(CACHE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_cache(cache: dict):
+    try:
+        CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False)
+    except Exception as e:
+        print(f"[CACHE] save error: {e}")
+
+
+def cache_get(url: str):
+    if not url:
+        return None
+    with _cache_lock:
+        cache = _load_cache()
+        entry = cache.get(url)
+    if not entry:
+        return None
+    if time.time() - entry.get("ts", 0) > CACHE_TTL:
+        return None
+    return entry.get("result")
+
+
+def cache_set(url: str, result: dict):
+    if not url:
+        return
+    with _cache_lock:
+        cache = _load_cache()
+        cache[url] = {"ts": time.time(), "result": result}
+        # einfache Größenbegrenzung
+        if len(cache) > 2000:
+            items = sorted(cache.items(), key=lambda kv: kv[1].get("ts", 0))
+            cache = dict(items[-2000:])
+        _save_cache(cache)
 
 
 # ===== DATABASE =====
@@ -373,13 +425,110 @@ def search_firmenabc(query, location):
     return results[:20]
 
 
-def search_wko(query, location):
-    """WKO Firmen A-Z — sucht Hauptort + alle Bezirke aus WKO-Links"""
+def _wko_parse_soup(s, query, location, seen_wko, results):
+    """Parst WKO-Suchergebnis-Soup, füllt results (mit Dedup über seen_wko)."""
+    for article in s.select("article.search-result-article"):
+        name_el = article.select_one(".search-result-header h3")
+        name = name_el.get_text(strip=True) if name_el else ""
+        if not is_valid_business(name):
+            continue
+        nk = name.lower().strip()
+        if nk in seen_wko:
+            continue
+        seen_wko.add(nk)
+
+        cat_el = article.select_one(".title-details")
+        category = cat_el.get_text(strip=True) if cat_el else ""
+
+        street_el = article.select_one(".address .street")
+        place_el = article.select_one(".address .place")
+        street = street_el.get_text(strip=True) if street_el else ""
+        place = place_el.get_text(strip=True).replace("\xa0", " ").strip() if place_el else ""
+        address = f"{street}, {place}".strip(", ") if street or place else location
+
+        phone = ""
+        phone_el = article.select_one("a[href^='tel:']")
+        if phone_el:
+            span = phone_el.find("span")
+            phone = span.get_text(strip=True) if span else phone_el.get_text(strip=True)
+
+        email = ""
+        email_el = article.select_one("a[href^='mailto:']")
+        if email_el:
+            email = email_el["href"].replace("mailto:", "")
+
+        website = ""
+        web_icon = article.find("use", attrs={"xlink:href": "#website"})
+        if web_icon:
+            web_link = web_icon.find_parent("a")
+            if web_link:
+                sp = web_link.find("span")
+                website = sp.get_text(strip=True) if sp else ""
+
+        detail_link = ""
+        title_a = article.select_one("a.title-link")
+        if title_a and title_a.get("href"):
+            detail_link = "https://firmen.wko.at" + title_a["href"]
+
+        results.append({
+            "name": name, "address": address, "phone": phone,
+            "website": website, "email": email,
+            "category": category or query or "Unternehmen",
+            "rating": None, "source": "WKO Firmen A-Z",
+            "detailUrl": detail_link,
+        })
+
+
+def wko_fetch_detail(detail_url):
+    """Ruft WKO-Detailseite ab und extrahiert Telefon/Email/Website."""
+    out = {"phone": "", "email": "", "website": ""}
+    if not detail_url:
+        return out
+    try:
+        resp = requests.get(detail_url, headers=SEARCH_HEADERS, timeout=10, allow_redirects=True)
+        if resp.status_code != 200:
+            return out
+        soup = BeautifulSoup(resp.text, "html.parser")
+        tel = soup.select_one("a[href^='tel:']")
+        if tel:
+            sp = tel.find("span")
+            out["phone"] = sp.get_text(strip=True) if sp else tel.get_text(strip=True)
+        mail = soup.select_one("a[href^='mailto:']")
+        if mail:
+            out["email"] = mail["href"].replace("mailto:", "")
+        web_icon = soup.find("use", attrs={"xlink:href": "#website"})
+        if web_icon:
+            link = web_icon.find_parent("a")
+            if link:
+                sp = link.find("span")
+                w = sp.get_text(strip=True) if sp else ""
+                if w and not w.startswith("http"):
+                    w = "https://" + w
+                out["website"] = w
+        if not out["website"]:
+            for a in soup.find_all("a", href=True):
+                href = a["href"]
+                if href.startswith("http") and not any(d in href.lower() for d in SKIP_DOMAINS):
+                    out["website"] = href
+                    break
+    except Exception as e:
+        print(f"[WKO detail] Error: {e}")
+    return out
+
+
+def search_wko(query, location, fetch_details=False):
+    """WKO Firmen A-Z — sucht Hauptort + Bezirke + Pagination (Seite 2).
+    Wenn query leer: allgemeine Ortssuche über alle Branchen.
+    fetch_details=True: ruft Detailseiten ab für fehlende Kontaktdaten."""
     results = []
     try:
         q = query.lower().strip()
         l = location.lower().strip()
-        base_url = f"https://firmen.wko.at/{requests.utils.quote(q)}/{requests.utils.quote(l)}/"
+        if q:
+            base_url = f"https://firmen.wko.at/{requests.utils.quote(q)}/{requests.utils.quote(l)}/"
+        else:
+            # Leere Branche: allgemeine Ortssuche (alle Branchen am Standort)
+            base_url = f"https://firmen.wko.at/suche/{requests.utils.quote(l)}/"
         print(f"[WKO] Fetching: {base_url}")
         resp = requests.get(base_url, headers=SEARCH_HEADERS, timeout=15, allow_redirects=True)
         print(f"[WKO] Status: {resp.status_code}, Length: {len(resp.text)}")
@@ -413,6 +562,25 @@ def search_wko(query, location):
         print(f"[WKO] Found {len(bezirk_links)} Bezirk/Umkreis-Links")
 
         all_soups = [soup]
+
+        # Pagination: Seite 2 laden, wenn vorhanden
+        try:
+            next_link = None
+            for a in soup.find_all("a", href=True):
+                rel = " ".join(a.get("rel", [])).lower()
+                txt = a.get_text(strip=True).lower()
+                href = a["href"]
+                if "rel=\"next\"" in str(a).lower() or rel == "next" or txt in ("weiter", "nächste", "2") or "page=2" in href.lower() or "/2/" in href:
+                    next_link = "https://firmen.wko.at" + href if href.startswith("/") else href
+                    break
+            if next_link and "firmen.wko.at" in next_link:
+                p2 = requests.get(next_link, headers=SEARCH_HEADERS, timeout=12, allow_redirects=True)
+                if p2.status_code == 200:
+                    all_soups.append(BeautifulSoup(p2.text, "html.parser"))
+                    print(f"[WKO] Pagination: Seite 2 geladen ({next_link})")
+        except Exception as e:
+            print(f"[WKO] Pagination error: {e}")
+
         for bz_url in bezirk_links[:8]:
             try:
                 bz_resp = requests.get(bz_url, headers=SEARCH_HEADERS, timeout=12, allow_redirects=True)
@@ -423,57 +591,28 @@ def search_wko(query, location):
 
         seen_wko = set()
         for s in all_soups:
-            for article in s.select("article.search-result-article"):
-                name_el = article.select_one(".search-result-header h3")
-                name = name_el.get_text(strip=True) if name_el else ""
-                if not is_valid_business(name):
-                    continue
-                nk = name.lower().strip()
-                if nk in seen_wko:
-                    continue
-                seen_wko.add(nk)
-
-                cat_el = article.select_one(".title-details")
-                category = cat_el.get_text(strip=True) if cat_el else ""
-
-                street_el = article.select_one(".address .street")
-                place_el = article.select_one(".address .place")
-                street = street_el.get_text(strip=True) if street_el else ""
-                place = place_el.get_text(strip=True).replace("\xa0", " ").strip() if place_el else ""
-                address = f"{street}, {place}".strip(", ") if street or place else location
-
-                phone = ""
-                phone_el = article.select_one("a[href^='tel:']")
-                if phone_el:
-                    span = phone_el.find("span")
-                    phone = span.get_text(strip=True) if span else phone_el.get_text(strip=True)
-
-                email = ""
-                email_el = article.select_one("a[href^='mailto:']")
-                if email_el:
-                    email = email_el["href"].replace("mailto:", "")
-
-                website = ""
-                web_icon = article.find("use", attrs={"xlink:href": "#website"})
-                if web_icon:
-                    web_link = web_icon.find_parent("a")
-                    if web_link:
-                        sp = web_link.find("span")
-                        website = sp.get_text(strip=True) if sp else ""
-
-                detail_link = ""
-                title_a = article.select_one("a.title-link")
-                if title_a and title_a.get("href"):
-                    detail_link = "https://firmen.wko.at" + title_a["href"]
-
-                results.append({
-                    "name": name, "address": address, "phone": phone,
-                    "website": website, "email": email,
-                    "category": category or query,
-                    "rating": None, "source": "WKO Firmen A-Z",
-                    "detailUrl": detail_link,
-                })
+            _wko_parse_soup(s, query, location, seen_wko, results)
         print(f"[WKO] Found: {len(results)} businesses from {len(all_soups)} pages")
+
+        # Detail-Seiten abrufen für Firmen ohne Kontaktdaten
+        if fetch_details:
+            need_detail = [b for b in results if b.get("detailUrl") and not (b.get("phone") and b.get("email") and b.get("website"))][:20]
+            if need_detail:
+                print(f"[WKO] Fetching {len(need_detail)} detail pages...")
+                with ThreadPoolExecutor(max_workers=6) as pool:
+                    fut = {pool.submit(wko_fetch_detail, b["detailUrl"]): b for b in need_detail}
+                    for f in as_completed(fut):
+                        b = fut[f]
+                        try:
+                            d = f.result()
+                            if d.get("phone") and not b.get("phone"):
+                                b["phone"] = d["phone"]
+                            if d.get("email") and not b.get("email"):
+                                b["email"] = d["email"]
+                            if d.get("website") and not b.get("website"):
+                                b["website"] = d["website"]
+                        except Exception:
+                            pass
     except Exception as e:
         print(f"[WKO] Error: {e}")
     return results[:60]
@@ -691,11 +830,48 @@ def search_herold_api(query, location):
     return results
 
 
+def detect_technologies(html, soup):
+    """Erkennt eingesetzte Technologien aus Meta-Tags, Pfaden, Markern."""
+    techs = []
+    h = html.lower()
+    gen = soup.find("meta", attrs={"name": re.compile(r"^generator$", re.I)})
+    gen_c = (gen.get("content", "") if gen else "").lower()
+    checks = [
+        ("WordPress", ("wp-content" in h or "wp-includes" in h or "wordpress" in gen_c)),
+        ("Shopify", ("cdn.shopify.com" in h or "shopify" in h)),
+        ("Wix", ("wix.com" in h or "_wix" in h or "wixstatic" in h)),
+        ("Squarespace", ("squarespace" in h)),
+        ("Joomla", ("joomla" in gen_c or "/components/com_" in h)),
+        ("TYPO3", ("typo3" in gen_c or "typo3" in h)),
+        ("Drupal", ("drupal" in gen_c or "drupal" in h)),
+        ("Jimdo", ("jimdo" in h)),
+        ("Webflow", ("webflow" in h)),
+        ("Magento", ("magento" in h or "mage/" in h)),
+        ("React", ("__react" in h or "data-reactroot" in h or "react" in h and "react-dom" in h)),
+        ("Vue.js", ("data-v-" in h or "vue.js" in h or "__vue" in h)),
+        ("Angular", ("ng-version" in h or "angular" in h)),
+        ("Bootstrap", ("bootstrap" in h)),
+        ("jQuery", ("jquery" in h)),
+        ("Google Analytics", ("google-analytics.com" in h or "gtag(" in h or "ga(" in h)),
+        ("Google Tag Manager", ("googletagmanager.com" in h or "gtm-" in h)),
+        ("Cloudflare", ("cloudflare" in h or "cdnjs.cloudflare" in h)),
+    ]
+    for tname, hit in checks:
+        if hit:
+            techs.append(tname)
+    return techs
+
+
 def quick_analyze(url):
-    """Tiefe Website-Analyse: SEO Score aus 15+ Faktoren"""
+    """Tiefe Website-Analyse: SEO Score aus 15+ Faktoren (mit 24h-Cache)"""
     result = {"hasWebsite": False, "online": False, "title": "", "seoScore": 0}
     if not url:
         return result
+    cached = cache_get(url)
+    if cached is not None:
+        cached = dict(cached)
+        cached["cached"] = True
+        return cached
     result["hasWebsite"] = True
     try:
         if not url.startswith(("http://", "https://")):
@@ -788,6 +964,24 @@ def quick_analyze(url):
         robots_content = robots.get("content", "").lower() if robots else ""
         result["robotsBlocked"] = "noindex" in robots_content
 
+        # Favicon
+        favicon = soup.find("link", rel=lambda r: r and "icon" in " ".join(r if isinstance(r, list) else [r]).lower())
+        result["hasFavicon"] = favicon is not None
+
+        # CSS / JS Dateien
+        css_files = soup.find_all("link", rel=lambda r: r and "stylesheet" in (r if isinstance(r, list) else [r]))
+        js_files = soup.find_all("script", src=True)
+        result["cssFiles"] = len(css_files)
+        result["jsFiles"] = len(js_files)
+
+        # Google Analytics / Tag Manager
+        html_lower = html.lower()
+        result["hasAnalytics"] = ("google-analytics.com" in html_lower or "gtag(" in html_lower or "googletagmanager.com" in html_lower)
+        result["hasTagManager"] = "googletagmanager.com" in html_lower
+
+        # Technologien
+        result["technologies"] = detect_technologies(html, soup)
+
         # ===== SEO SCORE (0-100, fair gewichtet) =====
         score = 0
         # HTTPS (0-12) — Sicherheit & Ranking-Faktor, hoch gewichtet
@@ -859,6 +1053,44 @@ def quick_analyze(url):
             score = int(score * 0.4)
 
         result["seoScore"] = min(score, 100)
+
+        # ===== Empfehlungen =====
+        recs = []
+        if not result["https"]:
+            recs.append("Kein HTTPS — SSL-Zertifikat einrichten")
+        if not title:
+            recs.append("Fehlender Title-Tag")
+        elif not (30 <= len(title) <= 65):
+            recs.append("Title-Länge optimieren (30–65 Zeichen)")
+        if not meta:
+            recs.append("Fehlende Meta Description")
+        elif not (120 <= len(meta) <= 160):
+            recs.append("Meta Description optimieren (120–160 Zeichen)")
+        if not h1s:
+            recs.append("Keine H1-Überschrift")
+        elif len(h1s) > 1:
+            recs.append("Mehrere H1-Tags — nur eine verwenden")
+        if not viewport:
+            recs.append("Nicht mobiloptimiert (Viewport-Meta fehlt)")
+        if words < 300:
+            recs.append("Zu wenig Textinhalt (unter 300 Wörter)")
+        if load_time >= 3:
+            recs.append("Langsame Ladezeit")
+        if imgs_total > 0 and imgs_with_alt < imgs_total:
+            recs.append(f"{imgs_total - imgs_with_alt} Bilder ohne Alt-Text")
+        if not result["hasSchema"]:
+            recs.append("Keine strukturierten Daten (Schema.org)")
+        if not result["hasOG"]:
+            recs.append("Keine Open-Graph-Tags (Social Sharing)")
+        if not result.get("hasFavicon"):
+            recs.append("Kein Favicon")
+        if not result.get("hasAnalytics"):
+            recs.append("Kein Web-Tracking (Google Analytics/GTM)")
+        if result.get("robotsBlocked"):
+            recs.append("Seite per noindex von der Indexierung ausgeschlossen")
+        result["recommendations"] = recs
+
+        cache_set(url, result)
     except Exception as e:
         result["online"] = False
         result["error"] = str(e)

@@ -5,42 +5,32 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.por
   : 'http://10.0.0.230:3001';
 
 // ===== STATE =====
+// Active pages in this build: dashboard, search, firmen, settings.
 const state = {
   websites: JSON.parse(localStorage.getItem('seo_websites') || '[]'),
-  zones: JSON.parse(localStorage.getItem('seo_zones') || '[]'),
-  jobs: JSON.parse(localStorage.getItem('seo_jobs') || '[]'),
   activities: JSON.parse(localStorage.getItem('seo_activities') || '[]'),
   settings: JSON.parse(localStorage.getItem('seo_settings') || '{}'),
-  stats: JSON.parse(localStorage.getItem('seo_stats') || '{"generated":0,"successJobs":0}'),
+  stats: JSON.parse(localStorage.getItem('seo_stats') || '{}'),
   firmen: JSON.parse(localStorage.getItem('seo_firmen') || '[]'),
+  searchHistory: JSON.parse(localStorage.getItem('seo_searchHistory') || '[]'),
 };
 
-let currentViewZoneId = null;
-let labSelectedType = 'text';
-let labSelectedTone = 'professionell';
-let lastLabResult = '';
-let labHistory = [];
+// Firmen-Seite UI state
+let firmenSort = 'date';
+let firmenSearch = '';
 
 function saveState() {
   localStorage.setItem('seo_websites', JSON.stringify(state.websites));
-  localStorage.setItem('seo_zones', JSON.stringify(state.zones));
-  localStorage.setItem('seo_jobs', JSON.stringify(state.jobs));
   localStorage.setItem('seo_activities', JSON.stringify(state.activities));
   localStorage.setItem('seo_settings', JSON.stringify(state.settings));
   localStorage.setItem('seo_stats', JSON.stringify(state.stats));
   localStorage.setItem('seo_firmen', JSON.stringify(state.firmen));
+  localStorage.setItem('seo_searchHistory', JSON.stringify(state.searchHistory));
 }
 
 // ===== NAVIGATION =====
 const PAGE_TITLES = {
   dashboard: 'Dashboard',
-  websites: 'Websites',
-  zones: 'Content Zones',
-  'ai-lab': 'AI Labor',
-  'ai-jobs': 'AI Jobs',
-  analytics: 'Analytics',
-  'seo-check': 'SEO Checker',
-  snippet: 'Embed Snippet',
   settings: 'Einstellungen',
   search: 'Firmensuche',
   firmen: 'Meine Firmen',
@@ -58,12 +48,6 @@ function navigateTo(page) {
 
 function renderPage(page) {
   if (page === 'dashboard') renderDashboard();
-  if (page === 'websites') renderWebsites();
-  if (page === 'zones') renderZones();
-  if (page === 'ai-jobs') renderJobs();
-  if (page === 'analytics') renderAnalytics();
-  if (page === 'snippet') renderSnippetPage();
-  if (page === 'ai-lab') renderLabZoneSelect();
   if (page === 'search') renderSearchPage();
   if (page === 'firmen') renderFirmenPage();
 }
@@ -88,9 +72,82 @@ function renderDashboard() {
   document.getElementById('statAnalyzed').textContent = state.stats.analyzed || 0;
   document.getElementById('statExported').textContent = state.stats.exported || 0;
 
-  updateNavBadges();
+  updateFirmenBadge();
   renderActivities();
+  renderDashboardInsights();
   updateQuickstart();
+}
+
+// Letzte Suchen + Top/Schwächste Firmen als zusätzlicher Block
+function renderDashboardInsights() {
+  const page = document.getElementById('page-dashboard');
+  if (!page) return;
+  let host = document.getElementById('dashInsights');
+  if (!host) {
+    host = document.createElement('div');
+    host.id = 'dashInsights';
+    host.className = 'dashboard-grid';
+    host.style.marginTop = '16px';
+    const grid = page.querySelector('.dashboard-grid');
+    if (grid && grid.parentNode) grid.parentNode.insertBefore(host, grid);
+    else page.appendChild(host);
+  }
+
+  // Letzte 3 Suchen
+  const searches = (state.searchHistory || []).slice(0, 3);
+  const searchesHtml = searches.length
+    ? searches.map(s => `
+      <button class="activity-item" style="width:100%;text-align:left;border:none;background:none;cursor:pointer;padding:10px 0"
+        onclick="repeatSearch(${JSON.stringify(s).replace(/"/g, '&quot;')})">
+        <div class="activity-dot" style="background:var(--ff-blue)"></div>
+        <div class="activity-body">
+          <div class="activity-title">${escHtml(s.location)}${s.query ? ' · ' + escHtml(s.query) : ''}</div>
+          <div class="activity-meta">${s.count || 0} Firmen · ${escHtml(s.portals === 'all' ? 'Alle Portale' : (s.portals || '').toUpperCase())}</div>
+        </div>
+        <span class="activity-time">${timeAgo(s.time)}</span>
+      </button>`).join('')
+    : `<div style="color:var(--ff-muted);font-size:13px;padding:14px 0">Noch keine Suchen. Starte oben deine erste Firmensuche.</div>`;
+
+  // Top / schwächste Firmen nach Score
+  const scored = state.firmen.filter(f => typeof f.seoScore === 'number');
+  let firmenHtml;
+  if (!scored.length) {
+    firmenHtml = `<div style="color:var(--ff-muted);font-size:13px;padding:14px 0">Noch keine bewerteten Firmen gespeichert.</div>`;
+  } else {
+    const sorted = [...scored].sort((a, b) => b.seoScore - a.seoScore);
+    const top = sorted.slice(0, 3);
+    const worst = sorted.slice(-3).reverse().filter(f => !top.includes(f));
+    const row = (f, tag) => `
+      <div class="activity-item" style="padding:10px 0;cursor:pointer" onclick='analyzeWebsite(${JSON.stringify(f.website || '')})'>
+        <div style="width:34px;height:34px;border-radius:9px;background:${scoreColorFor(f.seoScore)};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:13px;flex-shrink:0">${f.seoScore}</div>
+        <div class="activity-body">
+          <div class="activity-title">${escHtml(f.name)}</div>
+          <div class="activity-meta">${escHtml(f.category || f.source || '')}</div>
+        </div>
+        <span class="badge ${tag === 'top' ? 'badge-success' : 'badge-error'}" style="font-size:9px">${tag === 'top' ? 'Top' : 'Potenzial'}</span>
+      </div>`;
+    firmenHtml = top.map(f => row(f, 'top')).join('') + worst.map(f => row(f, 'low')).join('');
+  }
+
+  host.innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3>Letzte Suchen</h3><span class="badge badge-blue">Quick-Links</span></div>
+      <div class="activity-list">${searchesHtml}</div>
+    </div>
+    <div class="card">
+      <div class="card-header"><h3>Firmen-Ranking</h3><span class="badge badge-blue">SEO Score</span></div>
+      <div class="activity-list">${firmenHtml}</div>
+    </div>`;
+}
+
+function repeatSearch(s) {
+  navigateTo('search');
+  setTimeout(() => {
+    document.getElementById('searchLocation').value = s.location || '';
+    document.getElementById('searchQuery').value = s.query || '';
+    if (s.portals) document.getElementById('searchPortals').value = s.portals;
+    searchBusinesses();
+  }, 80);
 }
 
 function dashQuickSearch() {
@@ -146,683 +203,6 @@ function updateQuickstart() {
 function markStep(id) {
   const el = document.getElementById(id);
   if (el) el.classList.add('done');
-}
-
-// ===== WEBSITES =====
-function renderWebsites() {
-  const empty = document.getElementById('websitesEmpty');
-  const list = document.getElementById('websitesList');
-  if (!state.websites.length) {
-    empty.style.display = '';
-    list.style.display = 'none';
-    return;
-  }
-  empty.style.display = 'none';
-  list.style.display = '';
-  list.innerHTML = state.websites.map(w => {
-    const zones = state.zones.filter(z => z.websiteId === w.id).length;
-    const jobs = state.jobs.filter(j => j.websiteId === w.id).length;
-    return `<div class="website-item">
-      <div class="website-favicon">${(w.name || w.url)[0].toUpperCase()}</div>
-      <div class="website-info">
-        <div class="website-name">${escHtml(w.name || w.url)}</div>
-        <div class="website-url">${escHtml(w.url)}</div>
-        <div class="website-stats">
-          <span class="website-stat">${zones} Zones</span>
-          <span class="website-stat">${jobs} Jobs</span>
-          <span class="website-stat">API: <code>${w.apiKey.slice(0, 16)}…</code></span>
-          ${w.industry ? `<span class="website-stat">${escHtml(w.industry)}</span>` : ''}
-        </div>
-        ${w.keywords ? `<div class="kw-tags" style="margin-top:6px">${w.keywords.split(',').map(k => `<span class="kw-tag">${escHtml(k.trim())}</span>`).join('')}</div>` : ''}
-      </div>
-      <div class="website-actions">
-        <button class="btn btn-sm btn-secondary" onclick="viewSnippetForWebsite('${w.id}')">Snippet</button>
-        <button class="btn btn-sm btn-primary" onclick="quickAddZone('${w.id}')">+ Zone</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteWebsite('${w.id}')">Löschen</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function addWebsite() {
-  const url = document.getElementById('websiteUrl').value.trim();
-  const name = document.getElementById('websiteName').value.trim();
-  const keywords = document.getElementById('websiteKeywords').value.trim();
-  const lang = document.getElementById('websiteLang').value;
-  const industry = document.getElementById('websiteIndustry').value.trim();
-  if (!url) { showToast('Bitte URL eingeben.', 'error'); return; }
-  const w = { id: genId(), url, name: name || url, keywords, lang, industry, apiKey: genApiKey(), createdAt: new Date().toISOString() };
-  state.websites.push(w);
-  addActivity({ title: `Website "${w.name}" verbunden`, meta: w.url, status: 'success', color: '#0b5cff' });
-  saveState();
-  closeModal('addWebsiteModal');
-  document.getElementById('websiteUrl').value = '';
-  document.getElementById('websiteName').value = '';
-  document.getElementById('websiteKeywords').value = '';
-  document.getElementById('websiteIndustry').value = '';
-  showToast('Website erfolgreich hinzugefügt!', 'success');
-  renderWebsites();
-  renderDashboard();
-}
-
-function deleteWebsite(id) {
-  if (!confirm('Website wirklich entfernen? Alle zugehörigen Zones und Jobs werden gelöscht.')) return;
-  state.websites = state.websites.filter(w => w.id !== id);
-  state.zones = state.zones.filter(z => z.websiteId !== id);
-  state.jobs = state.jobs.filter(j => j.websiteId !== id);
-  saveState();
-  renderWebsites();
-  renderDashboard();
-  showToast('Website entfernt.', 'success');
-}
-
-function viewSnippetForWebsite(id) {
-  const w = state.websites.find(x => x.id === id);
-  if (!w) return;
-  navigateTo('snippet');
-  setTimeout(() => updateSnippetDisplay(w.apiKey), 80);
-}
-
-function quickAddZone(websiteId) {
-  populateZoneWebsiteSelect(websiteId);
-  openModal('addZoneModal');
-}
-
-// ===== ZONES =====
-function renderZones() {
-  const grid = document.getElementById('zonesGrid');
-  if (!state.zones.length) {
-    grid.innerHTML = `<div class="card" style="grid-column:1/-1">
-      <div class="empty-state">
-        <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-        <h4>Keine Content Zones</h4>
-        <p>Füge zuerst eine Website hinzu und definiere dann Bereiche, die die KI verändern soll.</p>
-      </div>
-    </div>`;
-    return;
-  }
-  grid.innerHTML = state.zones.map(z => {
-    const w = state.websites.find(x => x.id === z.websiteId);
-    const versions = z.versions?.length || 0;
-    return `<div class="zone-card">
-      <div class="zone-card-top">
-        <span class="zone-type-badge">${zoneTypeLabel(z.type)}</span>
-        <span class="badge badge-${versions > 0 ? 'success' : 'pending'}">${versions} Vers.</span>
-      </div>
-      <h4>${escHtml(z.zoneId)}</h4>
-      <div class="zone-card-site">${escHtml(w?.name || 'Unbekannte Website')}</div>
-      ${z.prompt ? `<div class="zone-card-prompt">${escHtml(z.prompt)}</div>` : ''}
-      ${z.currentContent ? `<div class="zone-card-content">${escHtml(z.currentContent)}</div>` : ''}
-      <div class="zone-actions">
-        <button class="btn btn-sm btn-primary" onclick="runZoneJob('${z.id}')">
-          <svg viewBox="0 0 24 24"><path d="M21 3L3 10.53v.98l6.84 2.65L12.48 21h.98L21 3z"/></svg>
-          AI ausführen
-        </button>
-        <button class="btn btn-sm btn-secondary" onclick="openViewZone('${z.id}')">Details</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteZone('${z.id}')">✕</button>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function openAddZoneModal() {
-  populateZoneWebsiteSelect();
-  openModal('addZoneModal');
-}
-
-function populateZoneWebsiteSelect(preselect) {
-  const sel = document.getElementById('zoneWebsite');
-  if (!state.websites.length) {
-    sel.innerHTML = '<option value="">— Erst Website hinzufügen —</option>';
-    return;
-  }
-  sel.innerHTML = state.websites.map(w =>
-    `<option value="${w.id}" ${preselect === w.id ? 'selected' : ''}>${escHtml(w.name || w.url)}</option>`
-  ).join('');
-}
-
-function addZone() {
-  const websiteId = document.getElementById('zoneWebsite').value;
-  const zoneId = document.getElementById('zoneId').value.trim();
-  const type = document.getElementById('zoneType').value;
-  const prompt = document.getElementById('zonePrompt').value.trim();
-  const content = document.getElementById('zoneContent').value.trim();
-  if (!websiteId) { showToast('Bitte Website wählen.', 'error'); return; }
-  if (!zoneId) { showToast('Bitte Zone ID eingeben.', 'error'); return; }
-  const zone = { id: genId(), websiteId, zoneId, type, prompt, currentContent: content, versions: [], createdAt: new Date().toISOString() };
-  state.zones.push(zone);
-  addActivity({ title: `Zone "${zoneId}" erstellt`, meta: zoneTypeLabel(type), status: 'success', color: '#0b5cff' });
-  saveState();
-  closeModal('addZoneModal');
-  ['zoneId','zonePrompt','zoneContent'].forEach(id => document.getElementById(id).value = '');
-  showToast('Content Zone gespeichert!', 'success');
-  renderZones();
-  renderDashboard();
-}
-
-function deleteZone(id) {
-  if (!confirm('Zone wirklich löschen?')) return;
-  state.zones = state.zones.filter(z => z.id !== id);
-  state.jobs = state.jobs.filter(j => j.zoneId !== id);
-  saveState();
-  renderZones();
-  renderDashboard();
-  showToast('Zone gelöscht.', 'success');
-}
-
-function openViewZone(id) {
-  const zone = state.zones.find(z => z.id === id);
-  if (!zone) return;
-  currentViewZoneId = id;
-  document.getElementById('viewZoneTitle').textContent = `Zone: ${zone.zoneId}`;
-  document.getElementById('viewZoneContent').textContent = zone.currentContent || '(noch kein Inhalt)';
-  document.getElementById('viewZonePrompt').textContent = zone.prompt || '(keine Anweisung)';
-  const timeline = document.getElementById('versionsTimeline');
-  if (!zone.versions?.length) {
-    timeline.innerHTML = `<div style="color:var(--ff-muted);font-size:13px;text-align:center;padding:20px">Noch keine Versionen vorhanden.</div>`;
-  } else {
-    timeline.innerHTML = zone.versions.slice(0, 10).map((v, i) => `
-      <div class="version-item ${i===0?'active':''}">
-        <div class="version-num">${zone.versions.length - i}</div>
-        <div class="version-body">
-          <div class="version-content">${escHtml(v.content)}</div>
-          <div class="version-meta">${timeAgo(v.time)}</div>
-        </div>
-        <button class="btn btn-sm btn-secondary" onclick="restoreVersion('${id}',${i})">Wiederherstellen</button>
-      </div>`).join('');
-  }
-  openModal('viewZoneModal');
-}
-
-function restoreVersion(zoneId, index) {
-  const zone = state.zones.find(z => z.id === zoneId);
-  if (!zone || !zone.versions[index]) return;
-  zone.currentContent = zone.versions[index].content;
-  saveState();
-  renderZones();
-  openViewZone(zoneId);
-  showToast('Version wiederhergestellt!', 'success');
-}
-
-async function runZoneJobFromView() {
-  closeModal('viewZoneModal');
-  if (currentViewZoneId) await runZoneJob(currentViewZoneId);
-}
-
-// ===== AI CONTENT GENERATION =====
-async function runZoneJob(zoneId) {
-  const zone = state.zones.find(z => z.id === zoneId);
-  if (!zone) return;
-  if (!state.settings.anthropicKey) {
-    showToast('Bitte Anthropic API Key in Einstellungen hinterlegen.', 'error');
-    navigateTo('settings');
-    return;
-  }
-  showAiRunning(true);
-  try {
-    const res = await fetch(API_BASE + '/api/ai/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        zoneId: zone.id,
-        zoneType: zone.type,
-        prompt: zone.prompt,
-        currentContent: zone.currentContent,
-        apiKey: state.settings.anthropicKey,
-        model: state.settings.aiModel || 'claude-opus-4-8',
-        keywords: (state.websites.find(w => w.id === zone.websiteId)?.keywords || ''),
-        lang: state.settings.defaultLang || 'de',
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-    if (data.content) {
-      zone.currentContent = data.content;
-      zone.versions = zone.versions || [];
-      zone.versions.unshift({ content: data.content, time: new Date().toISOString() });
-      state.stats.generated = (state.stats.generated || 0) + 1;
-      state.stats.successJobs = (state.stats.successJobs || 0) + 1;
-      addActivity({ title: `Zone "${zone.zoneId}" aktualisiert`, meta: zoneTypeLabel(zone.type), status: 'success', color: '#087a43' });
-      saveState();
-      renderZones();
-      renderDashboard();
-      showToast('Inhalt erfolgreich generiert!', 'success');
-    }
-  } catch (e) {
-    addActivity({ title: `Fehler bei Zone "${zone.zoneId}"`, meta: e.message, status: 'error', color: '#c03434' });
-    saveState();
-    showToast('Fehler: ' + e.message, 'error');
-  } finally {
-    showAiRunning(false);
-  }
-}
-
-function showAiRunning(show) {
-  const banner = document.getElementById('aiRunningBanner');
-  if (banner) banner.style.display = show ? 'flex' : 'none';
-}
-
-// ===== AI LABOR =====
-function renderLabZoneSelect() {
-  const sel = document.getElementById('labZoneSelect');
-  sel.innerHTML = '<option value="">— Freie Eingabe —</option>' +
-    state.zones.map(z => {
-      const w = state.websites.find(x => x.id === z.websiteId);
-      return `<option value="${z.id}">${escHtml((w?.name ? w.name + ' → ' : '') + z.zoneId)}</option>`;
-    }).join('');
-  sel.onchange = () => {
-    const zone = state.zones.find(z => z.id === sel.value);
-    if (zone) {
-      document.getElementById('labPrompt').value = zone.prompt || '';
-      document.getElementById('labCurrentContent').value = zone.currentContent || '';
-      document.getElementById('labKeywords').value = state.websites.find(w => w.id === zone.websiteId)?.keywords || '';
-      // Set content type
-      document.querySelectorAll('#contentTypeSelector .tone-btn').forEach(b => b.classList.remove('active'));
-      document.querySelector(`#contentTypeSelector [data-type="${zone.type}"]`)?.classList.add('active');
-      labSelectedType = zone.type;
-    }
-  };
-}
-
-// Tone & type buttons
-document.querySelectorAll('#contentTypeSelector .tone-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#contentTypeSelector .tone-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    labSelectedType = btn.dataset.type;
-  });
-});
-document.querySelectorAll('#toneSelector .tone-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#toneSelector .tone-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    labSelectedTone = btn.dataset.tone;
-  });
-});
-
-async function labGenerate() {
-  if (!state.settings.anthropicKey) {
-    showToast('Bitte API Key in Einstellungen eingeben.', 'error');
-    navigateTo('settings');
-    return;
-  }
-  const prompt = document.getElementById('labPrompt').value.trim();
-  const currentContent = document.getElementById('labCurrentContent').value.trim();
-  const keywords = document.getElementById('labKeywords').value.trim();
-  const zoneId = document.getElementById('labZoneSelect').value;
-
-  const fullPrompt = [
-    prompt,
-    `Ton: ${labSelectedTone}`,
-    keywords ? `Keywords: ${keywords}` : '',
-  ].filter(Boolean).join('\n');
-
-  setLabResult('<div class="ai-thinking-anim"><div class="dot"></div><div class="dot"></div><div class="dot"></div><span style="margin-left:4px">Claude AI denkt nach...</span></div>', true);
-  document.getElementById('copyResultBtn').style.display = 'none';
-  document.getElementById('applyResultBtn').style.display = 'none';
-
-  try {
-    const res = await fetch(API_BASE + '/api/ai/generate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        zoneId: zoneId || null,
-        zoneType: labSelectedType,
-        prompt: fullPrompt,
-        currentContent,
-        keywords,
-        apiKey: state.settings.anthropicKey,
-        model: state.settings.aiModel || 'claude-opus-4-8',
-        lang: state.settings.defaultLang || 'de',
-      }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    lastLabResult = data.content;
-    setLabResult(escHtml(data.content), false);
-    document.getElementById('copyResultBtn').style.display = '';
-    if (zoneId) document.getElementById('applyResultBtn').style.display = '';
-
-    state.stats.generated = (state.stats.generated || 0) + 1;
-    saveState();
-
-    // Add to history
-    labHistory.unshift({ type: labSelectedType, prompt: fullPrompt, result: data.content, time: new Date().toISOString() });
-    renderLabHistory();
-
-    // Quick SEO check
-    runQuickSeoCheck(data.content, keywords);
-
-    addActivity({ title: `AI Labor: ${zoneTypeLabel(labSelectedType)} generiert`, meta: keywords || prompt, status: 'success', color: '#0b5cff' });
-    saveState();
-    showToast('Inhalt generiert!', 'success');
-  } catch (e) {
-    setLabResult(`<span style="color:var(--ff-danger)">Fehler: ${escHtml(e.message)}</span>`, false);
-    showToast('Fehler: ' + e.message, 'error');
-  }
-}
-
-function setLabResult(html, isLoading) {
-  const box = document.getElementById('aiResultBox');
-  box.innerHTML = isLoading ? html : `<div style="white-space:pre-wrap;word-break:break-word">${html}</div>`;
-}
-
-function copyResult() {
-  navigator.clipboard.writeText(lastLabResult).then(() => showToast('Kopiert!', 'success'));
-}
-
-function applyResult() {
-  const zoneId = document.getElementById('labZoneSelect').value;
-  if (!zoneId || !lastLabResult) return;
-  const zone = state.zones.find(z => z.id === zoneId);
-  if (!zone) return;
-  zone.versions = zone.versions || [];
-  zone.versions.unshift({ content: lastLabResult, time: new Date().toISOString() });
-  zone.currentContent = lastLabResult;
-  saveState();
-  renderZones();
-  showToast('Inhalt auf Zone angewendet!', 'success');
-}
-
-function clearLabHistory() {
-  labHistory = [];
-  renderLabHistory();
-}
-
-function renderLabHistory() {
-  const el = document.getElementById('labHistory');
-  if (!labHistory.length) {
-    el.innerHTML = `<div style="color:var(--ff-muted);font-size:13px;text-align:center;padding:20px">Noch keine Generierungen in dieser Sitzung.</div>`;
-    return;
-  }
-  el.innerHTML = labHistory.slice(0, 10).map((h, i) => `
-    <div class="version-item">
-      <div class="version-num">${labHistory.length - i}</div>
-      <div class="version-body">
-        <div class="version-content">${escHtml(h.result)}</div>
-        <div class="version-meta">${zoneTypeLabel(h.type)} · ${timeAgo(h.time)}</div>
-      </div>
-      <button class="btn btn-sm btn-secondary" onclick="reuseLabResult(${i})">Verwenden</button>
-    </div>`).join('');
-}
-
-function reuseLabResult(i) {
-  lastLabResult = labHistory[i].result;
-  setLabResult(escHtml(lastLabResult), false);
-  document.getElementById('copyResultBtn').style.display = '';
-  document.getElementById('aiResultBox').scrollIntoView({ behavior: 'smooth' });
-}
-
-// ===== QUICK SEO CHECK =====
-function runQuickSeoCheck(text, keywords) {
-  const checks = [];
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  const kws = keywords ? keywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean) : [];
-
-  // Length check
-  if (words.length < 20) checks.push({ ok: false, label: `Zu kurz (${words.length} Wörter, mind. 20)` });
-  else if (words.length > 300) checks.push({ ok: 'warn', label: `Sehr lang (${words.length} Wörter)` });
-  else checks.push({ ok: true, label: `Gute Länge (${words.length} Wörter)` });
-
-  // Keyword presence
-  if (kws.length > 0) {
-    const lower = text.toLowerCase();
-    const found = kws.filter(k => lower.includes(k));
-    if (found.length === kws.length) checks.push({ ok: true, label: `Alle ${kws.length} Keywords enthalten` });
-    else if (found.length > 0) checks.push({ ok: 'warn', label: `${found.length}/${kws.length} Keywords gefunden` });
-    else checks.push({ ok: false, label: `Keine Keywords gefunden` });
-  }
-
-  // Sentence length
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-  const avgWords = sentences.length > 0 ? words.length / sentences.length : 0;
-  if (avgWords > 30) checks.push({ ok: 'warn', label: `Lange Sätze (Ø ${avgWords.toFixed(0)} Wörter)` });
-  else checks.push({ ok: true, label: `Gute Satzlänge (Ø ${avgWords.toFixed(0)} Wörter)` });
-
-  // No repeated words (simplistic)
-  const wordFreq = {};
-  words.forEach(w => { const lw = w.toLowerCase().replace(/[^a-z]/g, ''); if (lw.length > 5) wordFreq[lw] = (wordFreq[lw] || 0) + 1; });
-  const overused = Object.entries(wordFreq).filter(([, c]) => c > 5);
-  if (overused.length > 0) checks.push({ ok: 'warn', label: `Überbenutzte Wörter: ${overused.map(([w]) => w).slice(0,3).join(', ')}` });
-  else checks.push({ ok: true, label: 'Keine Wortwiederholungen' });
-
-  // Uppercase start
-  if (text[0] && text[0] === text[0].toUpperCase()) checks.push({ ok: true, label: 'Text beginnt mit Großbuchstaben' });
-
-  const el = document.getElementById('quickSeoCheck');
-  el.innerHTML = checks.map(c => `
-    <div class="seo-check-item ${c.ok === true ? 'pass' : c.ok === 'warn' ? 'warn' : 'fail'}">
-      <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor">
-        ${c.ok === true
-          ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>'
-          : c.ok === 'warn'
-          ? '<path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/>'
-          : '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>'}
-      </svg>
-      ${escHtml(c.label)}
-    </div>`).join('');
-}
-
-// ===== SEO CHECKER PAGE =====
-async function runSeoCheck() {
-  const content = document.getElementById('seoCheckInput').value.trim();
-  const keywords = document.getElementById('seoCheckKeywords').value.trim();
-  if (!content) { showToast('Bitte Text eingeben.', 'error'); return; }
-  if (!state.settings.anthropicKey) {
-    showToast('Bitte API Key in Einstellungen eingeben.', 'error');
-    navigateTo('settings');
-    return;
-  }
-
-  document.getElementById('seoCheckResult').innerHTML = `
-    <div style="display:flex;justify-content:center;align-items:center;gap:12px;padding:40px;color:var(--ff-blue)">
-      <div class="spinner" style="border-color:rgba(11,92,255,.3);border-top-color:var(--ff-blue)"></div>
-      Claude AI analysiert...
-    </div>`;
-
-  try {
-    const res = await fetch(API_BASE + '/api/ai/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, keywords, apiKey: state.settings.anthropicKey, model: state.settings.aiModel || 'claude-opus-4-8' }),
-    });
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
-
-    document.getElementById('seoScoreBadge').textContent = `Score: ${data.score || '—'}/100`;
-    document.getElementById('seoScoreBadge').className = `badge ${(data.score || 0) >= 70 ? 'badge-success' : (data.score || 0) >= 40 ? 'badge-pending' : 'badge-error'}`;
-
-    document.getElementById('seoCheckResult').innerHTML = `
-      <div style="margin-bottom:16px">
-        <div class="score-ring" style="margin:0 auto 16px">
-          <svg viewBox="0 0 110 110" width="110" height="110">
-            <circle class="score-ring-track" cx="55" cy="55" r="44"/>
-            <circle class="score-ring-fill" cx="55" cy="55" r="44"
-              stroke-dasharray="276.46"
-              stroke-dashoffset="${276.46 - (276.46 * (data.score || 0) / 100)}"
-              style="stroke:${(data.score||0) >= 70 ? 'var(--ff-success)' : (data.score||0) >= 40 ? '#ea580c' : 'var(--ff-danger)'}"/>
-          </svg>
-          <div class="score-ring-value">
-            <strong style="color:${(data.score||0) >= 70 ? 'var(--ff-success)' : (data.score||0) >= 40 ? '#ea580c' : 'var(--ff-danger)'}">${data.score || 0}</strong>
-            <span>SEO</span>
-          </div>
-        </div>
-      </div>
-      ${data.suggestions?.length ? `
-      <div class="form-group">
-        <label class="form-label">Verbesserungsvorschläge</label>
-        ${data.suggestions.map(s => `
-          <div class="seo-check-item warn" style="margin-bottom:6px">
-            <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>
-            ${escHtml(s)}
-          </div>`).join('')}
-      </div>` : ''}
-      ${data.improvedContent ? `
-      <div class="form-group">
-        <label class="form-label">Verbesserter Text</label>
-        <div class="ai-result-box" style="white-space:pre-wrap">${escHtml(data.improvedContent)}</div>
-        <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="navigator.clipboard.writeText(${JSON.stringify(data.improvedContent)}).then(()=>showToast('Kopiert!','success'))">Kopieren</button>
-      </div>` : ''}`;
-
-    // Update analytics score
-    state.stats.lastSeoScore = data.score;
-    saveState();
-    updateScoreRing(data.score);
-    showToast('SEO-Analyse abgeschlossen!', 'success');
-  } catch (e) {
-    document.getElementById('seoCheckResult').innerHTML = `<div class="seo-check-item fail"><span>Fehler: ${escHtml(e.message)}</span></div>`;
-    showToast('Fehler bei der Analyse.', 'error');
-  }
-}
-
-// ===== JOBS =====
-function renderJobs() {
-  const tbody = document.getElementById('jobsBody');
-  if (!state.jobs.length) {
-    tbody.innerHTML = '<tr class="empty-table-row"><td colspan="7">Noch keine AI Jobs konfiguriert.</td></tr>';
-    return;
-  }
-  tbody.innerHTML = state.jobs.map(j => {
-    const zone = state.zones.find(z => z.id === j.zoneId);
-    const website = state.websites.find(w => w.id === j.websiteId);
-    return `<tr>
-      <td><strong>${escHtml(zone?.zoneId || '—')}</strong></td>
-      <td>${escHtml(website?.name || '—')}</td>
-      <td>${escHtml(jobTypeLabel(j.type))}</td>
-      <td>${escHtml(scheduleLabel(j.schedule))}</td>
-      <td><span class="badge badge-${j.status || 'pending'}">${statusLabel(j.status || 'pending')}</span></td>
-      <td>${j.lastRun ? timeAgo(j.lastRun) : '—'}</td>
-      <td style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-primary" onclick="runJob('${j.id}')">Ausführen</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteJob('${j.id}')">✕</button>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function openCreateJobModal() {
-  const sel = document.getElementById('jobZone');
-  sel.innerHTML = !state.zones.length
-    ? '<option value="">— Erst Zone anlegen —</option>'
-    : state.zones.map(z => {
-        const w = state.websites.find(x => x.id === z.websiteId);
-        return `<option value="${z.id}">${escHtml((w?.name ? w.name + ' → ' : '') + z.zoneId)}</option>`;
-      }).join('');
-  openModal('createJobModal');
-}
-
-function createJob() {
-  const zoneId = document.getElementById('jobZone').value;
-  const type = document.getElementById('jobType').value;
-  const schedule = document.getElementById('jobSchedule').value;
-  if (!zoneId) { showToast('Bitte Zone wählen.', 'error'); return; }
-  const zone = state.zones.find(z => z.id === zoneId);
-  const job = { id: genId(), zoneId, websiteId: zone?.websiteId || null, type, schedule, status: 'pending', lastRun: null, createdAt: new Date().toISOString() };
-  state.jobs.push(job);
-  saveState();
-  closeModal('createJobModal');
-  showToast('AI Job erstellt!', 'success');
-  renderJobs();
-  renderDashboard();
-}
-
-async function runJob(jobId) {
-  const job = state.jobs.find(j => j.id === jobId);
-  if (!job) return;
-  job.status = 'running';
-  renderJobs();
-  await runZoneJob(job.zoneId);
-  job.status = 'success';
-  job.lastRun = new Date().toISOString();
-  saveState();
-  renderJobs();
-}
-
-function deleteJob(id) {
-  state.jobs = state.jobs.filter(j => j.id !== id);
-  saveState();
-  renderJobs();
-  showToast('Job gelöscht.', 'success');
-}
-
-// ===== RUN ALL ZONES =====
-document.getElementById('runAiBtn').addEventListener('click', async () => {
-  if (!state.settings.anthropicKey) { showToast('Bitte API Key in Einstellungen eingeben.', 'error'); navigateTo('settings'); return; }
-  if (!state.zones.length) { showToast('Keine Content Zones vorhanden.', 'error'); return; }
-  showToast(`AI wird für ${state.zones.length} Zone(n) gestartet...`, 'info');
-  for (const zone of state.zones) await runZoneJob(zone.id);
-});
-
-// ===== ANALYTICS =====
-function renderAnalytics() {
-  document.getElementById('aStatGen').textContent = state.stats.generated || 0;
-  document.getElementById('aStatSuccess').textContent = state.stats.successJobs || 0;
-  document.getElementById('aStatScore').textContent = state.stats.lastSeoScore ? state.stats.lastSeoScore + '/100' : '—';
-  document.getElementById('aStatSites').textContent = state.websites.length;
-  renderAnalyticsBars();
-  updateScoreRing(state.stats.lastSeoScore || 0);
-}
-
-function renderAnalyticsBars() {
-  const container = document.getElementById('analyticsBars');
-  const labels = [];
-  const today = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(today);
-    d.setDate(today.getDate() - i);
-    labels.push(d);
-  }
-  const actByDay = {};
-  state.activities.forEach(a => {
-    const day = new Date(a.time).toDateString();
-    actByDay[day] = (actByDay[day] || 0) + 1;
-  });
-  const max = Math.max(...labels.map(d => actByDay[d.toDateString()] || 0), 1);
-  container.innerHTML = labels.map((d, i) => {
-    const count = actByDay[d.toDateString()] || 0;
-    const h = Math.round((count / max) * 100);
-    const show = i % 5 === 0;
-    return `<div class="analytics-bar-wrap">
-      <div class="analytics-bar" style="height:${h}%" title="${count} Aktivitäten am ${d.toLocaleDateString('de')}"></div>
-      <span class="analytics-bar-label">${show ? d.getDate() + '.' : ''}</span>
-    </div>`;
-  }).join('');
-}
-
-function updateScoreRing(score) {
-  const fill = document.getElementById('scoreRingFill');
-  const num = document.getElementById('scoreRingNum');
-  if (!fill || !num) return;
-  const circ = 276.46;
-  fill.style.strokeDashoffset = circ - (circ * score / 100);
-  num.textContent = score || '—';
-  const s1 = Math.min(100, Math.round(score * 1.1)); const s2 = Math.min(100, Math.round(score * 0.95)); const s3 = Math.min(100, Math.round(score * 0.9));
-  ['sb1','sb2','sb3'].forEach((id, i) => { document.getElementById(id).textContent = [s1,s2,s3][i] + '/100'; });
-  ['sbf1','sbf2','sbf3'].forEach((id, i) => { document.getElementById(id).style.width = [s1,s2,s3][i] + '%'; });
-}
-
-// ===== SNIPPET PAGE =====
-function renderSnippetPage() {
-  const sel = document.getElementById('snippetWebsiteSelect');
-  sel.innerHTML = '<option value="">— Website wählen —</option>' +
-    state.websites.map(w => `<option value="${w.id}">${escHtml(w.name || w.url)}</option>`).join('');
-}
-
-function updateSnippetForWebsite() {
-  const id = document.getElementById('snippetWebsiteSelect').value;
-  const w = state.websites.find(x => x.id === id);
-  updateSnippetDisplay(w?.apiKey || 'YOUR_API_KEY');
-}
-
-function updateSnippetDisplay(apiKey) {
-  document.getElementById('snippetCode').innerHTML =
-    `<span class="cm">&lt;!-- seo.solutions AI Content Engine --&gt;</span>\n&lt;script&gt;\n(function() {\n  var SEO_API_KEY = '<span class="str">${escHtml(apiKey)}</span>';\n  <span class="kw">var</span> script = document.createElement(<span class="str">'script'</span>);\n  script.src = <span class="str">'https://api.seo.solutions/v1/content/embed.js?key='</span> + SEO_API_KEY;\n  script.async = <span class="kw">true</span>;\n  document.head.appendChild(script);\n})();\n&lt;/script&gt;`;
-}
-
-function copySnippet() {
-  const raw = document.getElementById('snippetCode').textContent;
-  navigator.clipboard.writeText(raw).then(() => showToast('Snippet kopiert!', 'success'));
 }
 
 // ===== SETTINGS =====
@@ -929,6 +309,85 @@ function statusLabel(s) { return { success:'Erfolgreich', pending:'Ausstehend', 
 function jobTypeLabel(t) { return { optimize:'SEO Optimieren', rewrite:'Neuschreiben', expand:'Erweitern', shorten:'Kürzen', refresh:'Auffrischen' }[t] || t; }
 function zoneTypeLabel(t) { return { text:'Text', headline:'Headline', meta:'Meta', alt:'Alt-Text', title:'Titel' }[t] || t; }
 function scheduleLabel(s) { return { once:'Einmalig', daily:'Täglich', weekly:'Wöchentlich', manual:'Manuell' }[s] || s; }
+
+// SEO color from score
+function scoreColorFor(s) {
+  if (s === null || s === undefined || s === '') return 'var(--ff-muted)';
+  return s >= 70 ? 'var(--ff-success)' : s >= 40 ? '#ea580c' : 'var(--ff-danger)';
+}
+function scoreBadgeClass(s) {
+  if (s === null || s === undefined || s === '') return '';
+  return s >= 70 ? 'badge-success' : s >= 40 ? 'badge-pending' : 'badge-error';
+}
+
+// Build a normalized seoData object from any business/analysis payload
+function buildSeoData(src) {
+  src = src || {};
+  return {
+    online: src.siteOnline ?? src.online ?? (src.error ? false : undefined),
+    siteTitle: src.siteTitle || src.title || '',
+    title: src.title !== undefined ? !!src.title : (src.siteTitle ? true : undefined),
+    metaDescription: src.metaDescription !== undefined ? !!src.metaDescription : undefined,
+    hasH1: src.h1Tags ? src.h1Tags.length > 0 : (src.hasH1 ?? undefined),
+    h1Count: src.h1Tags ? src.h1Tags.length : (src.h1Count ?? null),
+    hasMobile: src.hasViewport ?? src.mobile ?? src.hasMobile ?? undefined,
+    https: src.https ?? (src.website || src.url || '').startsWith('https://') || undefined,
+    loadTime: src.loadTime ?? null,
+    wordCount: src.wordCount ?? null,
+    hasSchema: src.hasSchema ?? undefined,
+    images: src.images || null,
+    internalLinks: src.internalLinks ?? null,
+    externalLinks: src.externalLinks ?? null,
+  };
+}
+
+// Generate textual recommendations from analysis data
+function seoRecommendations(d) {
+  const recs = [];
+  if (!d) return recs;
+  if (d.online === false) { recs.push('Website ist nicht erreichbar — Erreichbarkeit/Hosting prüfen.'); return recs; }
+  if (!d.title && !d.siteTitle) recs.push('Es fehlt ein <title>-Tag — wichtigster SEO-Faktor.');
+  if (d.metaDescription === false) recs.push('Meta Description hinzufügen (120–160 Zeichen) für bessere Klickrate.');
+  if (d.hasH1 === false || d.h1Count === 0) recs.push('Eine eindeutige H1-Überschrift einfügen.');
+  if (d.h1Count > 1) recs.push(`${d.h1Count} H1-Tags gefunden — auf genau eine reduzieren.`);
+  if (d.hasMobile === false) recs.push('Viewport-Meta-Tag setzen für mobile Optimierung.');
+  if (d.https === false) recs.push('Auf HTTPS umstellen (SSL-Zertifikat) — Vertrauen & Ranking.');
+  if (d.loadTime && d.loadTime >= 3) recs.push(`Ladezeit (${d.loadTime}s) reduzieren — Bilder/Code optimieren.`);
+  if (d.wordCount !== null && d.wordCount < 300) recs.push(`Mehr Inhalt erstellen (${d.wordCount} Wörter, mind. 300 empfohlen).`);
+  if (d.hasSchema === false) recs.push('Strukturierte Daten (Schema.org) ergänzen für Rich Snippets.');
+  if (d.images && d.images.withoutAlt > 0) recs.push(`${d.images.withoutAlt} Bilder ohne Alt-Text — für SEO & Barrierefreiheit ergänzen.`);
+  return recs;
+}
+
+// Average SEO score over firmen that have a website with a score
+function firmenAvgScore() {
+  const scored = state.firmen.filter(f => typeof f.seoScore === 'number');
+  if (!scored.length) return null;
+  return Math.round(scored.reduce((a, f) => a + f.seoScore, 0) / scored.length);
+}
+
+// Shimmer/skeleton loader markup
+function skeletonLoader(rows = 4, label = 'Wird geladen...') {
+  const bars = Array.from({ length: rows }, () => `
+    <div style="display:flex;gap:14px;align-items:center;padding:14px 0;border-bottom:1px solid var(--ff-line,rgba(0,0,0,.06))">
+      <div class="sk-shimmer" style="width:48px;height:48px;border-radius:12px;flex-shrink:0"></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:8px">
+        <div class="sk-shimmer" style="height:13px;width:45%;border-radius:6px"></div>
+        <div class="sk-shimmer" style="height:11px;width:75%;border-radius:6px"></div>
+      </div>
+    </div>`).join('');
+  return `<div class="card">
+    <style>
+      @keyframes skShimmer{0%{background-position:-400px 0}100%{background-position:400px 0}}
+      .sk-shimmer{background:linear-gradient(90deg,rgba(0,0,0,.05) 25%,rgba(0,0,0,.10) 37%,rgba(0,0,0,.05) 63%);background-size:800px 100%;animation:skShimmer 1.3s ease infinite}
+    </style>
+    <div style="display:flex;align-items:center;gap:10px;color:var(--ff-blue);font-weight:800;font-size:14px;margin-bottom:6px" id="loaderLabel">
+      <div class="spinner" style="width:18px;height:18px;border-width:3px;border-color:rgba(11,92,255,.2);border-top-color:var(--ff-blue)"></div>
+      <span id="loaderLabelText">${escHtml(label)}</span>
+    </div>
+    ${bars}
+  </div>`;
+}
 
 // ===== FIRMENSUCHE =====
 function renderSearchPage() {
