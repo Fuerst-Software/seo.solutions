@@ -79,64 +79,97 @@ code { font-family: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
 /* =====================================================================
    macOS SEQUOIA WALLPAPER — animated aurora background
    ===================================================================== */
+/* macOS Tahoe — Deep Ocean + Mountain Aurora wallpaper */
 .macos-wallpaper {
   position: fixed;
   inset: 0;
   z-index: -3;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 120% 90% at 15% 5%,  #1b2f6e 0%, transparent 55%),
-    radial-gradient(ellipse 100% 80% at 90% 10%, #4b1d6e 0%, transparent 55%),
-    radial-gradient(ellipse 130% 100% at 80% 95%, #0d4f63 0%, transparent 55%),
-    radial-gradient(ellipse 100% 90% at 10% 95%, #6e1d4b 0%, transparent 55%),
-    linear-gradient(160deg, #0c1438 0%, #160c2e 45%, #06121f 100%);
+    /* Starfield speckle */
+    radial-gradient(1px 1px at 20% 15%, rgba(255,255,255,0.15), transparent),
+    radial-gradient(1px 1px at 60% 25%, rgba(255,255,255,0.1), transparent),
+    radial-gradient(1px 1px at 80% 65%, rgba(255,255,255,0.12), transparent),
+    radial-gradient(1px 1px at 35% 80%, rgba(255,255,255,0.08), transparent),
+    /* Color fields */
+    radial-gradient(ellipse 110% 80% at 12% 8%, #1a3578 0%, transparent 50%),
+    radial-gradient(ellipse 90% 70% at 88% 5%, #4a1a6e 0%, transparent 48%),
+    radial-gradient(ellipse 100% 80% at 75% 92%, #0a4858 0%, transparent 50%),
+    radial-gradient(ellipse 85% 70% at 8% 88%, #5e1848 0%, transparent 48%),
+    radial-gradient(ellipse 60% 50% at 50% 50%, #1a2248 0%, transparent 55%),
+    linear-gradient(170deg, #08102a 0%, #0e0820 35%, #060e1e 65%, #0a0612 100%);
+}
+/* Mesh overlay for depth */
+.macos-wallpaper::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 50% 40% at 45% 40%, rgba(30,60,140,0.2) 0%, transparent 70%),
+    radial-gradient(ellipse 40% 35% at 65% 60%, rgba(80,30,120,0.15) 0%, transparent 65%);
+  mix-blend-mode: screen;
+}
+/* Subtle noise texture */
+.macos-wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.02;
+  mix-blend-mode: overlay;
 }
 
-/* Aurora blob layers */
+/* Aurora blob layers — 3 animated orbs */
 body::before,
 body::after {
   content: "";
   position: fixed;
   z-index: -2;
   pointer-events: none;
-  filter: blur(70px);
-  opacity: 0.7;
+  filter: blur(80px);
+  opacity: 0.65;
+  will-change: transform;
 }
 
+/* Orb 1 — Blue/Purple (top-left) */
 body::before {
-  width: 70vw;
-  height: 70vw;
-  top: -20vw;
-  left: -10vw;
-  background:
-    radial-gradient(circle at 30% 30%, rgba(0, 122, 255, 0.55), transparent 60%),
-    radial-gradient(circle at 70% 60%, rgba(191, 90, 242, 0.5), transparent 60%);
-  border-radius: 50%;
-  animation: aurora1 26s ease-in-out infinite;
-}
-
-body::after {
   width: 65vw;
   height: 65vw;
-  bottom: -25vw;
-  right: -10vw;
+  top: -18vw;
+  left: -8vw;
   background:
-    radial-gradient(circle at 40% 40%, rgba(48, 209, 240, 0.45), transparent 60%),
-    radial-gradient(circle at 60% 70%, rgba(255, 90, 160, 0.4), transparent 60%);
+    radial-gradient(circle at 35% 35%, rgba(0, 122, 255, 0.5) 0%, transparent 55%),
+    radial-gradient(circle at 65% 55%, rgba(175, 82, 222, 0.45) 0%, transparent 55%);
   border-radius: 50%;
-  animation: aurora2 32s ease-in-out infinite;
+  animation: aurora1 22s ease-in-out infinite;
 }
+
+/* Orb 2 — Teal/Pink (bottom-right) */
+body::after {
+  width: 60vw;
+  height: 60vw;
+  bottom: -22vw;
+  right: -8vw;
+  background:
+    radial-gradient(circle at 40% 40%, rgba(90, 200, 250, 0.4) 0%, transparent 55%),
+    radial-gradient(circle at 65% 65%, rgba(255, 55, 95, 0.35) 0%, transparent 55%);
+  border-radius: 50%;
+  animation: aurora2 28s ease-in-out infinite;
+}
+
+/* Orb 3 — via .macos-wallpaper pseudo (Green/Gold, center) */
 
 @keyframes aurora1 {
   0%   { transform: translate(0, 0) rotate(0deg) scale(1); }
-  33%  { transform: translate(12vw, 8vh) rotate(40deg) scale(1.15); }
-  66%  { transform: translate(-6vw, 14vh) rotate(-30deg) scale(0.95); }
+  25%  { transform: translate(8vw, 5vh) rotate(25deg) scale(1.08); }
+  50%  { transform: translate(14vw, 12vh) rotate(50deg) scale(1.15); }
+  75%  { transform: translate(-4vw, 10vh) rotate(-20deg) scale(0.95); }
   100% { transform: translate(0, 0) rotate(0deg) scale(1); }
 }
 @keyframes aurora2 {
   0%   { transform: translate(0, 0) rotate(0deg) scale(1); }
-  40%  { transform: translate(-14vw, -10vh) rotate(-45deg) scale(1.2); }
-  75%  { transform: translate(8vw, -6vh) rotate(35deg) scale(0.9); }
+  30%  { transform: translate(-10vw, -8vh) rotate(-35deg) scale(1.12); }
+  60%  { transform: translate(6vw, -4vh) rotate(30deg) scale(0.92); }
   100% { transform: translate(0, 0) rotate(0deg) scale(1); }
 }
 
