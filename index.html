@@ -13,19 +13,19 @@
        from style.css for JS-generated markup.
        ============================================================ */
     :root {
-      --px-bg: #eef2f9;
-      --px-bg-2: #f6f8fc;
-      --px-card: rgba(255, 255, 255, 0.78);
-      --px-card-solid: #ffffff;
-      --px-border: rgba(20, 30, 60, 0.08);
-      --px-border-strong: rgba(20, 30, 60, 0.14);
-      --px-ink: #16203a;
-      --px-soft: #5a6580;
-      --px-faint: #8a94ab;
-      --px-blue: #2563ff;
-      --px-blue-2: #4f8bff;
-      --px-shadow: 0 18px 50px -24px rgba(30, 45, 90, 0.35);
-      --px-shadow-sm: 0 8px 28px -16px rgba(30, 45, 90, 0.3);
+      --px-bg: #c8d0e0;
+      --px-bg-2: #b8c4d8;
+      --px-card: rgba(255, 255, 255, 0.48);
+      --px-card-solid: rgba(255, 255, 255, 0.65);
+      --px-border: rgba(255, 255, 255, 0.35);
+      --px-border-strong: rgba(255, 255, 255, 0.5);
+      --px-ink: #0b1220;
+      --px-soft: #283548;
+      --px-faint: #4a5c78;
+      --px-blue: #0a84ff;
+      --px-blue-2: #3d9eff;
+      --px-shadow: 0 20px 60px -20px rgba(15, 30, 70, 0.35);
+      --px-shadow-sm: 0 10px 32px -14px rgba(15, 30, 70, 0.3);
       --r: 20px;
     }
 
@@ -39,26 +39,27 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ---- Background: light with dezente Lichtkreise ---- */
+    /* ---- Background: kontrastreich mit sichtbaren Farbflächen ---- */
     .macos-wallpaper {
       position: fixed; inset: 0; z-index: -1;
       background:
-        radial-gradient(900px 700px at 12% -8%, rgba(79, 139, 255, 0.18), transparent 60%),
-        radial-gradient(800px 650px at 92% 8%, rgba(168, 130, 255, 0.16), transparent 60%),
-        radial-gradient(900px 700px at 78% 102%, rgba(48, 209, 140, 0.12), transparent 60%),
-        linear-gradient(160deg, #f3f6fc 0%, #e9eef8 100%);
+        radial-gradient(800px 600px at 10% 0%, rgba(30, 80, 200, 0.28), transparent 55%),
+        radial-gradient(700px 550px at 90% 5%, rgba(140, 70, 210, 0.22), transparent 50%),
+        radial-gradient(750px 600px at 65% 100%, rgba(20, 150, 110, 0.16), transparent 55%),
+        radial-gradient(500px 400px at 25% 75%, rgba(50, 90, 190, 0.14), transparent 50%),
+        linear-gradient(160deg, #bcc8de 0%, #aebad2 40%, #a4b4ce 70%, #b4c0d6 100%);
     }
     .macos-wallpaper::before, .macos-wallpaper::after {
       content: ""; position: absolute; border-radius: 50%;
-      filter: blur(8px); opacity: .5;
+      filter: blur(60px); opacity: .6;
     }
     .macos-wallpaper::before {
-      width: 320px; height: 320px; top: 18%; left: 60%;
-      background: radial-gradient(circle, rgba(255,255,255,.7), transparent 70%);
+      width: 400px; height: 400px; top: 12%; left: 55%;
+      background: radial-gradient(circle, rgba(80, 140, 255, 0.3), transparent 65%);
     }
     .macos-wallpaper::after {
-      width: 240px; height: 240px; bottom: 12%; left: 8%;
-      background: radial-gradient(circle, rgba(255,255,255,.6), transparent 70%);
+      width: 350px; height: 350px; bottom: 8%; left: 5%;
+      background: radial-gradient(circle, rgba(160, 120, 240, 0.25), transparent 65%);
     }
 
     /* ---- Shell ---- */
@@ -77,10 +78,10 @@
       padding: 22px 18px;
       margin: 16px 0 16px 16px;
       border-radius: 26px;
-      background: rgba(255, 255, 255, 0.72);
-      backdrop-filter: blur(26px) saturate(160%);
-      -webkit-backdrop-filter: blur(26px) saturate(160%);
-      border: 1px solid rgba(255, 255, 255, 0.7);
+      background: rgba(255, 255, 255, 0.38);
+      backdrop-filter: blur(40px) saturate(180%);
+      -webkit-backdrop-filter: blur(40px) saturate(180%);
+      border: 0.5px solid rgba(255, 255, 255, 0.45);
       box-shadow: var(--px-shadow);
       height: calc(100vh - 32px);
       position: sticky; top: 16px;
@@ -169,11 +170,11 @@
       padding: 14px 22px;
       margin-bottom: 22px;
       border-radius: var(--r);
-      background: rgba(255, 255, 255, 0.72);
-      backdrop-filter: blur(22px) saturate(160%);
-      -webkit-backdrop-filter: blur(22px) saturate(160%);
-      border: 1px solid rgba(255, 255, 255, 0.7);
-      box-shadow: var(--px-shadow-sm);
+      background: rgba(255, 255, 255, 0.35);
+      backdrop-filter: blur(30px) saturate(180%);
+      -webkit-backdrop-filter: blur(30px) saturate(180%);
+      border: 0.5px solid rgba(255, 255, 255, 0.4);
+      box-shadow: var(--px-shadow-sm), inset 0 0.5px 0 rgba(255,255,255,0.5);
       position: sticky; top: 16px; z-index: 40;
     }
     .menu-toggle {
