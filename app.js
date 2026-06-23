@@ -487,7 +487,18 @@ function renderResultCard(biz, i) {
     biz.hasSchema ? '✅ Schema' : '',
   ].filter(Boolean) : [];
 
-  return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${usable}" data-score="${seo}" style="${!hasWeb ? 'opacity:.55' : ''}">
+  // Score bar visual
+  const scoreBar = usable ? `<div style="margin:8px 0 6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+      <span style="font-size:11px;font-weight:600;color:var(--ff-text-soft)">SEO Score</span>
+      <span style="font-size:13px;font-weight:800;color:${scoreColor}">${seo}/100</span>
+    </div>
+    <div style="height:6px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:3px;overflow:hidden">
+      <div style="height:100%;width:${seo}%;background:${scoreColor};border-radius:3px;transition:width 0.6s ease"></div>
+    </div>
+  </div>` : '';
+
+  return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${usable}" data-score="${seo}" style="${!hasWeb ? 'opacity:.45' : ''}">
     <div class="search-result-favicon" style="background:${scoreColor}">
       ${usable ? seo : escHtml((biz.name || '?')[0].toUpperCase())}
     </div>
@@ -496,16 +507,16 @@ function renderResultCard(biz, i) {
         <div class="search-result-name">${escHtml(biz.name)}</div>
         ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
         ${biz.source ? `<span class="badge badge-blue">${escHtml(biz.source)}</span>` : ''}
-        ${!hasWeb ? `<span class="badge badge-error" style="font-size:9px">Potentieller Neukunde</span>` : ''}
       </div>
 
-      ${usable
-        ? `<div style="margin:6px 0 4px;display:flex;gap:4px;flex-wrap:wrap">${pills.map(p => `<span class="badge" style="font-size:10px;background:var(--ff-bg-soft,#f5f5f7);color:var(--ff-text-soft,#333);border:.5px solid var(--ff-line,rgba(0,0,0,.08))">${p}</span>`).join('')}</div>`
+      ${usable ? scoreBar
         : hasWeb
-        ? '<div style="margin:4px 0;font-size:11px;color:#ff9f0a;font-weight:600">⚠️ Website nicht erreichbar</div>'
-        : '<div style="margin:4px 0;font-size:11px;color:var(--ff-danger);font-weight:600">Keine Website — potentieller Neukunde</div>'}
-      ${biz.siteTitle && online ? `<div style="font-size:11px;color:var(--ff-muted);margin-bottom:3px">${escHtml(biz.siteTitle)}</div>` : ''}
-      ${biz.websiteDiscovered ? '<span class="badge badge-blue" style="font-size:9px">Website via Recherche gefunden</span>' : ''}
+        ? '<div style="margin:6px 0;font-size:12px;color:#ff9f0a;font-weight:600">⚠️ Website nicht erreichbar</div>'
+        : '<div style="margin:6px 0;padding:6px 10px;background:var(--ff-danger-bg,rgba(239,68,68,0.08));border-radius:8px;font-size:12px;color:var(--ff-danger);font-weight:600">🚫 Keine Website — potentieller Neukunde!</div>'}
+
+      ${usable ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${pills.map(p => `<span class="badge" style="font-size:10px;background:var(--ff-bg-soft,#f0f0f5);color:var(--ff-text-soft,#444);border:.5px solid var(--ff-line,rgba(0,0,0,.06))">${p}</span>`).join('')}</div>` : ''}
+      ${biz.siteTitle && online ? `<div style="font-size:11px;color:var(--ff-muted);margin-bottom:3px">📄 ${escHtml(biz.siteTitle)}</div>` : ''}
+      ${biz.websiteDiscovered ? '<span class="badge badge-blue" style="font-size:9px">🔍 Website via Recherche gefunden</span>' : ''}
 
       <div class="search-result-meta">
         ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
