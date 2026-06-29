@@ -744,28 +744,44 @@ def search_osm(query, location, radius):
                 lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{safe_radius},{lat},{lon});')
                 lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{safe_radius},{lat},{lon});')
         else:
-            # OHNE Branche: ALLE Firmen (craft+shop+office+amenity)
+            # OHNE Branche: craft + shop + office (KEIN amenity — verursacht Timeouts)
             lines = [
                 f'node["craft"]["name"](around:{safe_radius},{lat},{lon});',
-                f'way["craft"]["name"](around:{safe_radius},{lat},{lon});',
                 f'node["shop"]["name"](around:{safe_radius},{lat},{lon});',
-                f'way["shop"]["name"](around:{safe_radius},{lat},{lon});',
                 f'node["office"]["name"](around:{safe_radius},{lat},{lon});',
-                f'way["office"]["name"](around:{safe_radius},{lat},{lon});',
-                f'node["amenity"]["name"](around:{safe_radius},{lat},{lon});',
-                f'way["amenity"]["name"](around:{safe_radius},{lat},{lon});',
+                f'way["craft"]["name"](around:{safe_radius},{lat},{lon});',
+                f'way["shop"]["name"](around:{safe_radius},{lat},{lon});',
             ]
 
         overpass_body = "\n".join(lines)
-        overpass_query = f"[out:json][timeout:45];\n(\n{overpass_body}\n);\nout center 1000;"
+        overpass_query = f"[out:json][timeout:30];\n(\n{overpass_body}\n);\nout center 500;"
         print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters, radius={safe_radius}")
-        ov_resp = requests.post(
+
+        # Overpass mit Fallback-Servern (Hauptserver oft überlastet)
+        OVERPASS_SERVERS = [
+            "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
             "https://overpass-api.de/api/interpreter",
-            data={"data": overpass_query},
-            headers=OSM_HEADERS,
-            timeout=45,
-        )
-        ov_data = ov_resp.json()
+            "https://overpass.kumi.systems/api/interpreter",
+        ]
+        ov_data = None
+        for srv in OVERPASS_SERVERS:
+            try:
+                print(f"[OSM] Trying: {srv}")
+                ov_resp = requests.post(srv, data={"data": overpass_query}, headers=OSM_HEADERS, timeout=35)
+                if ov_resp.status_code == 200:
+                    ov_data = ov_resp.json()
+                    remark = str(ov_data.get("remark", ""))
+                    if "error" not in remark.lower() and "timeout" not in remark.lower():
+                        print(f"[OSM] OK from {srv}")
+                        break
+                    print(f"[OSM] Timeout from {srv}")
+                    ov_data = None
+            except Exception as e:
+                print(f"[OSM] Failed {srv}: {e}")
+        if not ov_data:
+            print("[OSM] All servers failed")
+            return results
+
         elements = ov_data.get("elements", [])
         print(f"[OSM] Raw elements: {len(elements)}")
 
