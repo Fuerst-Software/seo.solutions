@@ -960,6 +960,17 @@ function renderFirmaFootprint(f, fp) {
   const explanations = fp.seoExplanations || [];
   const salesTips = fp.salesTips || [];
 
+  // Neue Felder aus erweitertem Backend-Response
+  const impressum = fp.impressum || {};
+  const domainInfo = fp.domainInfo || null;
+  const wayback = fp.wayback || null;
+  const indexedPages = fp.indexedPages || null;
+  const blog = fp.blog || null;
+  const backlinks = fp.backlinks || null;
+  const reviews = fp.reviews || [];
+  const facebookAds = fp.facebookAds || null;
+  const conversationGuide = fp.conversationGuide || null;
+
   const body = $('analyzeModalBody');
 
   // ---------- Tab: Übersicht ----------
@@ -981,9 +992,19 @@ function renderFirmaFootprint(f, fp) {
     </div>` : '';
 
   const name = company.name || f.name;
-  const owner = company.owner || '';
-  const phones = company.phones && company.phones.length ? company.phones : (f.phone ? [f.phone] : []);
-  const emails = company.emails && company.emails.length ? company.emails : (f.email ? [f.email] : []);
+  const owner = company.owner || impressum.owner || '';
+  // Telefone & Emails aus Impressum + Company zusammenführen (dedupliziert)
+  const dedupe = (arr) => Array.from(new Set(arr.filter(Boolean).map(x => String(x).trim()))).filter(Boolean);
+  const phones = dedupe([
+    ...(impressum.phones || []),
+    ...(company.phones || []),
+    ...(f.phone ? [f.phone] : []),
+  ]);
+  const emails = dedupe([
+    ...(impressum.emails || []),
+    ...(company.emails || []),
+    ...(f.email ? [f.email] : []),
+  ]);
   const address = company.address || f.address || '';
   const website = company.website || f.website || '';
   const category = company.category || f.category || '';
@@ -999,6 +1020,10 @@ function renderFirmaFootprint(f, fp) {
         ${owner ? `<div style="margin:8px 0;padding:10px 12px;background:var(--ff-bg-soft,#f0f0f5);border-radius:10px">
           <span style="font-size:11px;color:var(--ff-muted);display:block">Geschäftsführer / Inhaber</span>
           <strong style="font-size:15px;color:var(--ff-navy)">👤 ${escHtml(owner)}</strong>
+        </div>` : ''}
+        ${(impressum.firmenbuchNr || impressum.uid) ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0">
+          ${impressum.firmenbuchNr ? `<span class="badge badge-blue" style="font-size:10px">Firmenbuch: FN ${escHtml(impressum.firmenbuchNr)}</span>` : ''}
+          ${impressum.uid ? `<span class="badge badge-blue" style="font-size:10px">UID: ${escHtml(impressum.uid)}</span>` : ''}
         </div>` : ''}
         <div style="margin-top:10px">
           ${phones.length ? phones.map(p => contactRow('📞', `<a href="tel:${escAttr(p)}">${escHtml(p)}</a>`)).join('')
@@ -1092,16 +1117,59 @@ function renderFirmaFootprint(f, fp) {
     const tc = web.trackingCodes || {};
     const yn = (v) => v ? '<span style="color:var(--ff-success);font-weight:700">✓</span>' : '<span style="color:var(--ff-danger);font-weight:700">✗</span>';
     const trackingHtml = `<div style="margin-top:14px;border-top:0.5px solid var(--ff-line);padding-top:12px">
-      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Tracking & Technik</strong>
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Tracking & Marketing</strong>
       <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 14px;font-size:12.5px">
         <div>Google Analytics ${yn(tc.googleAnalytics)}</div>
         <div>Google Tag Manager ${yn(tc.googleTagManager)}</div>
         <div>Facebook Pixel ${yn(tc.facebookPixel)}</div>
         <div>Google Ads ${yn(tc.googleAds)}</div>
+        <div>Newsletter${tc.newsletter ? ` (${escHtml(tc.newsletter)})` : ''} ${yn(tc.newsletter)}</div>
+        <div>HubSpot CRM ${yn(tc.hubspot)}</div>
+        <div>LinkedIn Pixel ${yn(tc.linkedinPixel)}</div>
+        <div>Cookie Consent ${yn(tc.cookieConsent)}</div>
         <div>Sitemap ${yn(web.hasSitemap)}</div>
         <div>Robots.txt ${yn(web.hasRobotsTxt)}</div>
       </div>
     </div>`;
+
+    // Content: Blog, indexierte Seiten, Backlinks
+    const contentRows = [];
+    if (blog) {
+      contentRows.push(blog.found
+        ? `<div>📰 Blog gefunden${blog.url ? ` unter <a href="${escAttr(blog.url)}" target="_blank" rel="noopener">${escHtml((blog.url || '').replace(/^https?:\/\/(www\.)?/, '').slice(0, 30))}</a>` : ''}${blog.lastPost ? `, letzter Beitrag: ${escHtml(fmtDate(blog.lastPost))}` : ''}</div>`
+        : '<div>📰 Kein Blog gefunden</div>');
+    }
+    if (indexedPages && indexedPages.estimatedPages != null) {
+      contentRows.push(`<div>🔎 Ca. ${escHtml(indexedPages.estimatedPages)} Seiten bei Google indexiert</div>`);
+    }
+    if (backlinks && backlinks.estimatedBacklinks != null) {
+      contentRows.push(`<div>🔗 Ca. ${escHtml(backlinks.estimatedBacklinks)} andere Websites verlinken hierher</div>`);
+    }
+    const contentHtml = contentRows.length ? `<div style="margin-top:14px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Content</strong>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ff-text-soft)">${contentRows.join('')}</div>
+    </div>` : '';
+
+    // Domain & Hosting
+    const domainRows = [];
+    if (domainInfo) {
+      if (domainInfo.registeredSince) domainRows.push(`<div>📅 Domain seit: ${escHtml(domainInfo.registeredSince)}</div>`);
+      if (domainInfo.hostingProvider) domainRows.push(`<div>🖥️ Hosting: ${escHtml(domainInfo.hostingProvider)}</div>`);
+      if (domainInfo.protocol) domainRows.push(`<div>🌐 Protokoll: ${escHtml(domainInfo.protocol)}</div>`);
+    }
+    domainRows.push(`<div>🔒 SSL: ${web.https ? 'aktiv (HTTPS)' : 'kein HTTPS'}</div>`);
+    if (web.http2 != null) domainRows.push(`<div>HTTP/2 ${yn(web.http2)}</div>`);
+    const domainHtml = (domainInfo || true) ? `<div style="margin-top:14px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Domain & Hosting</strong>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--ff-text-soft)">${domainRows.join('')}</div>
+    </div>` : '';
+
+    // Website-Historie (Wayback)
+    const waybackHtml = (wayback && wayback.available) ? `<div style="margin-top:14px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Website-Historie</strong>
+      <div style="font-size:12.5px;color:var(--ff-text-soft)">🕰️ ${escHtml(wayback.snapshotCount ?? '?')} Snapshots${wayback.firstSnapshot ? ` seit ${escHtml(fmtDate(wayback.firstSnapshot))}` : ''}${wayback.lastSnapshot ? `, letzter am ${escHtml(fmtDate(wayback.lastSnapshot))}` : ''}</div>
+      ${wayback.url ? `<a href="${escAttr(wayback.url)}" target="_blank" rel="noopener" class="badge badge-blue" style="font-size:10px;margin-top:6px;display:inline-block">Wayback Archive öffnen →</a>` : ''}
+    </div>` : '';
 
     websiteHtml = `
       ${scoreBar}
@@ -1111,7 +1179,10 @@ function renderFirmaFootprint(f, fp) {
       ${goodsHtml}
       ${badsHtml}
       ${techHtml}
-      ${trackingHtml}`;
+      ${trackingHtml}
+      ${contentHtml}
+      ${domainHtml}
+      ${waybackHtml}`;
   } else {
     websiteHtml = '<div style="padding:24px;text-align:center;color:var(--ff-muted);font-size:13px">Keine Website vorhanden oder Analyse nicht möglich.<br><strong style="color:var(--ff-danger)">🚫 Potentieller Neukunde — Website-Erstellung anbieten!</strong></div>';
   }
@@ -1133,6 +1204,13 @@ function renderFirmaFootprint(f, fp) {
     ${onSiteLinks.length ? `<div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:12px">
       <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Auf der Website verlinkt</strong>
       <div style="display:flex;gap:4px;flex-wrap:wrap">${onSiteLinks.map(l => `<a href="${escAttr(l)}" target="_blank" rel="noopener" class="badge badge-blue" style="font-size:10px">${escHtml(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 30))}</a>`).join('')}</div>
+    </div>` : ''}
+    ${facebookAds ? `<div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">Facebook Ads Library</strong>
+      <div style="font-size:13px;margin-bottom:6px">📣 Aktive Kampagnen gefunden: ${facebookAds.foundInSearch
+        ? '<span style="color:var(--ff-success);font-weight:700">Ja ✅</span>'
+        : '<span style="color:var(--ff-danger);font-weight:700">Nein ❌</span>'}</div>
+      ${facebookAds.adsLibraryUrl ? `<a href="${escAttr(facebookAds.adsLibraryUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">Alle Werbeanzeigen ansehen →</a>` : ''}
     </div>` : ''}`;
 
   // ---------- Tab: Online-Präsenz ----------
@@ -1155,7 +1233,19 @@ function renderFirmaFootprint(f, fp) {
         ? `<a href="${escAttr(gp.mapsUrl)}" target="_blank" rel="noopener" style="color:var(--ff-success)">Vorhanden ✅</a>`
         : '<span style="color:var(--ff-danger)">Nicht gefunden ❌</span>'}</div>
       <div style="font-size:13px">⭐ Bewertungen: ${gp.reviewsInfo ? escHtml(gp.reviewsInfo) : '<span style="color:var(--ff-muted)">Keine Informationen</span>'}</div>
-    </div>`;
+    </div>
+    ${reviews.length ? `<div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">Bewertungsportale</strong>
+      <div style="display:flex;flex-direction:column;gap:6px">${reviews.map(r => {
+        const found = r.found && r.url;
+        return `<div class="seo-check-item ${found ? 'pass' : 'fail'}" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+          <strong style="font-size:13px;color:var(--ff-navy);flex:1">${escHtml(r.name || '')}</strong>
+          ${found
+            ? `<span style="font-size:12px;color:var(--ff-success)">✅</span> <a href="${escAttr(r.url)}" target="_blank" rel="noopener" class="badge badge-blue" style="font-size:10px">Öffnen</a>`
+            : '<span style="font-size:12px;color:var(--ff-danger)">❌ Nicht gefunden</span>'}
+        </div>`;
+      }).join('')}</div>
+    </div>` : ''}`;
 
   // ---------- Tab: Verkaufsgespräch ----------
   const tipsHtml = salesTips.length ? salesTips.map((t, i) => `
@@ -1182,7 +1272,42 @@ function renderFirmaFootprint(f, fp) {
     ${openers.map(o => `<div style="font-size:13px;color:var(--ff-text-soft);padding:8px 12px;background:var(--ff-bg-soft,#f0f0f5);border-radius:10px;margin-bottom:6px;font-style:italic">${escHtml(o)}</div>`).join('')}
   </div>` : '';
 
-  const salesHtml = tipsHtml + openersHtml;
+  // Conversation Guide (neu) — vor den klassischen Tipps anzeigen
+  let guideHtml = '';
+  if (conversationGuide) {
+    const cg = conversationGuide;
+    const parts = [];
+    if (cg.opening) parts.push(`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-navy);margin-bottom:6px">🎯 Gesprächseröffnung</div>
+      <div style="font-size:14px;color:var(--ff-navy);padding:12px 14px;background:var(--ff-bg-soft,#f0f0f5);border-left:3px solid var(--ff-blue);border-radius:10px;font-style:italic">${escHtml(cg.opening)}</div>
+    </div>`);
+    if (cg.icebreaker) parts.push(`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-navy);margin-bottom:6px">🧊 Einstieg</div>
+      <div style="font-size:13px;color:var(--ff-text-soft);line-height:1.5">${escHtml(cg.icebreaker)}</div>
+    </div>`);
+    if (cg.painPoints && cg.painPoints.length) parts.push(`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-navy);margin-bottom:6px">⚠️ Schmerzpunkte</div>
+      <ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:5px">${cg.painPoints.map(p => `<li style="font-size:13px;color:var(--ff-text-soft);line-height:1.5">${escHtml(p)}</li>`).join('')}</ol>
+    </div>`);
+    if (cg.solution) parts.push(`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-success);margin-bottom:6px">✅ Lösung</div>
+      <div style="font-size:13px;color:var(--ff-text-soft);line-height:1.5">${escHtml(cg.solution)}</div>
+    </div>`);
+    if (cg.urgency) parts.push(`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-danger);margin-bottom:6px">⏰ Dringlichkeit</div>
+      <div style="font-size:13px;color:var(--ff-danger);padding:12px 14px;background:var(--ff-danger-bg,rgba(239,68,68,0.08));border-radius:10px;line-height:1.5">${escHtml(cg.urgency)}</div>
+    </div>`);
+    if (cg.competitorHint) parts.push(`<div style="margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-navy);margin-bottom:6px">🥊 Konkurrenz-Hinweis</div>
+      <div style="font-size:13px;color:var(--ff-text-soft);line-height:1.5">${escHtml(cg.competitorHint)}</div>
+    </div>`);
+    if (parts.length) {
+      guideHtml = `<div style="margin-bottom:16px">${parts.join('')}</div>
+      ${(salesTips.length || openers.length) ? '<div style="font-size:13px;font-weight:800;color:var(--ff-navy);margin-bottom:8px;border-top:0.5px solid var(--ff-line);padding-top:12px">Weitere Verkaufstipps</div>' : ''}`;
+    }
+  }
+
+  const salesHtml = guideHtml + tipsHtml + openersHtml;
 
   // ---------- Tab-Navigation zusammenbauen ----------
   const tabs = [

@@ -1567,7 +1567,11 @@ def _footprint_website_extras(url):
         "hasSitemap": False, "hasRobotsTxt": False, "lastModified": None,
         "socialLinksOnSite": [],
         "trackingCodes": {"googleAnalytics": False, "googleTagManager": False,
-                          "facebookPixel": False, "googleAds": False},
+                          "facebookPixel": False, "googleAds": False,
+                          "newsletterMailchimp": False, "newsletterSendinblue": False,
+                          "newsletterCleverReach": False, "crmHubSpot": False,
+                          "remarketingCriteo": False, "linkedInPixel": False,
+                          "pinterestPixel": False, "cookieConsent": False},
     }
     if not url:
         return extras
@@ -1593,6 +1597,15 @@ def _footprint_website_extras(url):
         extras["trackingCodes"]["googleAds"] = "adsbygoogle" in h or "googleadservices" in h
         extras["trackingCodes"]["googleTagManager"] = "gtm.js" in h or "googletagmanager.com" in h
         extras["trackingCodes"]["googleAnalytics"] = "gtag(" in h or "google-analytics.com" in h or re.search(r"\bga\(", h) is not None
+        # Erweiterte Tracking-/Marketing-Erkennung
+        extras["trackingCodes"]["newsletterMailchimp"] = "mailchimp" in h or "mc.js" in h
+        extras["trackingCodes"]["newsletterSendinblue"] = "sendinblue" in h or "sib.js" in h
+        extras["trackingCodes"]["newsletterCleverReach"] = "cleverreach" in h
+        extras["trackingCodes"]["crmHubSpot"] = "hubspot" in h
+        extras["trackingCodes"]["remarketingCriteo"] = "criteo" in h
+        extras["trackingCodes"]["linkedInPixel"] = "linkedin.com/px" in h or "snap.licdn.com" in h
+        extras["trackingCodes"]["pinterestPixel"] = "pintrk(" in h or "pinterest" in h
+        extras["trackingCodes"]["cookieConsent"] = "cookiebot" in h or "cookieconsent" in h or "onetrust" in h
         soup = BeautifulSoup(html, "html.parser")
         social_domains = ["facebook.com", "instagram.com", "linkedin.com",
                           "youtube.com", "tiktok.com", "twitter.com", "x.com"]
@@ -1606,6 +1619,264 @@ def _footprint_website_extras(url):
     except Exception as e:
         print(f"[FOOTPRINT WEB] {e}")
     return extras
+
+
+# ===== NEUE FOOTPRINT-ANALYSEN =====
+
+def _footprint_facebook_ads(name, location):
+    """Sucht in der Facebook Ads Library nach Werbekampagnen"""
+    try:
+        results = _ddg_search(f'"{name}" site:facebook.com/ads/library')
+    except Exception:
+        results = []
+    url = f"https://www.facebook.com/ads/library/?active_status=all&ad_type=all&country=AT&q={requests.utils.quote(name)}"
+    return {"adsLibraryUrl": url, "foundInSearch": len(results) > 0, "searchResults": results[:3]}
+
+
+def _footprint_impressum(website):
+    """Scrapt /impressum, /imprint, /about auf der Website und extrahiert Stammdaten."""
+    out = {"found": False, "url": None, "owner": None, "firmenbuch": None,
+           "uid": None, "phones": [], "emails": []}
+    if not website:
+        return out
+    if not website.startswith(("http://", "https://")):
+        website = "https://" + website
+    try:
+        parsed = urlparse(website)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        return out
+    paths = ["/impressum", "/imprint", "/about", "/about-us", "/kontakt", "/contact"]
+    for path in paths:
+        try:
+            resp = requests.get(base + path, headers=SEARCH_HEADERS, timeout=8, allow_redirects=True)
+            if resp.status_code != 200 or len(resp.text) < 200:
+                continue
+            out["found"] = True
+            out["url"] = resp.url
+            soup = BeautifulSoup(resp.text, "html.parser")
+            text = soup.get_text(" ", strip=True)
+
+            m = re.search(r"(?:Gesch[äa]ftsf[üu]hrer|Inhaber|CEO|Eigent[üu]mer)\s*:?\s*([A-ZÄÖÜ][\wäöüß.\-]+(?:\s+[A-ZÄÖÜ][\wäöüß.\-]+){0,3})", text)
+            if m and not out["owner"]:
+                out["owner"] = m.group(1).strip()
+            fn = re.search(r"FN\s*\d+\s*[a-z]", text)
+            if fn and not out["firmenbuch"]:
+                out["firmenbuch"] = fn.group(0).strip()
+            uid = re.search(r"ATU\d{8}", text)
+            if uid and not out["uid"]:
+                out["uid"] = uid.group(0)
+            for tel in soup.select("a[href^='tel:']"):
+                num = tel["href"].replace("tel:", "").strip()
+                if num and num not in out["phones"]:
+                    out["phones"].append(num)
+            for mail in soup.select("a[href^='mailto:']"):
+                em = mail["href"].replace("mailto:", "").split("?")[0].strip()
+                if em and em not in out["emails"]:
+                    out["emails"].append(em)
+            break
+        except Exception:
+            continue
+    return out
+
+
+def _footprint_domain(website):
+    """WHOIS-ähnliche Info über DuckDuckGo."""
+    out = {"domain": None, "registrationDate": None, "hostingProvider": None, "searchResults": []}
+    if not website:
+        return out
+    try:
+        if not website.startswith(("http://", "https://")):
+            website = "https://" + website
+        domain = urlparse(website).netloc
+        out["domain"] = domain
+        results = _ddg_search(f"{domain} whois registriert")
+        out["searchResults"] = results[:3]
+        for r in results:
+            text = (r.get("title", "") + " " + r.get("snippet", ""))
+            d = re.search(r"(\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4})", text)
+            if d and not out["registrationDate"]:
+                out["registrationDate"] = d.group(1)
+            h = re.search(r"(?:Hosting|Provider|Host|Registrar)\s*:?\s*([A-Za-z0-9 .\-]{3,40})", text, re.I)
+            if h and not out["hostingProvider"]:
+                out["hostingProvider"] = h.group(1).strip()
+    except Exception:
+        pass
+    return out
+
+
+def _footprint_wayback(website):
+    """Prüft web.archive.org für Website-Historie."""
+    out = {"available": False, "firstSnapshot": None, "snapshotUrl": None, "totalSnapshots": None}
+    if not website:
+        return out
+    try:
+        if not website.startswith(("http://", "https://")):
+            website = "https://" + website
+        domain = urlparse(website).netloc
+        resp = requests.get(f"https://archive.org/wayback/available?url={domain}", timeout=8)
+        if resp.status_code == 200:
+            data = resp.json()
+            snap = (data.get("archived_snapshots") or {}).get("closest") or {}
+            if snap.get("available"):
+                out["available"] = True
+                out["snapshotUrl"] = snap.get("url")
+                out["firstSnapshot"] = snap.get("timestamp")
+        # Anzahl Snapshots über timemap
+        try:
+            tm = requests.get(
+                f"http://web.archive.org/web/timemap/json?url={domain}&output=json",
+                timeout=8,
+            )
+            if tm.status_code == 200:
+                rows = tm.json()
+                if isinstance(rows, list) and len(rows) > 1:
+                    out["totalSnapshots"] = len(rows) - 1  # erste Zeile = Header
+                    first = rows[1]
+                    # timestamp-Spalte suchen
+                    for cell in first:
+                        if re.fullmatch(r"\d{14}", str(cell)):
+                            out["firstSnapshot"] = out["firstSnapshot"] or str(cell)
+                            break
+        except Exception:
+            pass
+    except Exception:
+        pass
+    return out
+
+
+def _footprint_indexed_pages(website):
+    """Zählt wie viele Seiten bei Suchmaschinen indexiert sind."""
+    out = {"estimatedPages": 0, "indexedUrls": []}
+    if not website:
+        return out
+    try:
+        if not website.startswith(("http://", "https://")):
+            website = "https://" + website
+        domain = urlparse(website).netloc
+        results = _ddg_search(f"site:{domain}")
+        out["estimatedPages"] = len(results)
+        out["indexedUrls"] = [r["url"] for r in results[:10]]
+    except Exception:
+        pass
+    return out
+
+
+def _footprint_blog(website):
+    """Prüft ob die Website einen Blog/News Bereich hat."""
+    out = {"hasBlog": False, "blogUrl": None, "lastPostDate": None}
+    if not website:
+        return out
+    if not website.startswith(("http://", "https://")):
+        website = "https://" + website
+    try:
+        parsed = urlparse(website)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+    except Exception:
+        return out
+    for path in ("/blog", "/news", "/aktuelles", "/magazin", "/journal"):
+        try:
+            h = requests.head(base + path, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
+            if h.status_code == 405:
+                h = requests.get(base + path, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
+            if h.status_code < 400:
+                out["hasBlog"] = True
+                out["blogUrl"] = base + path
+                try:
+                    page = requests.get(base + path, headers=SEARCH_HEADERS, timeout=8, allow_redirects=True)
+                    if page.status_code == 200:
+                        soup = BeautifulSoup(page.text, "html.parser")
+                        t = soup.find("time")
+                        if t:
+                            out["lastPostDate"] = t.get("datetime") or t.get_text(strip=True)
+                        else:
+                            m = re.search(r"\d{1,2}\.\s*\w+\s*\d{4}|\d{4}-\d{2}-\d{2}", page.text)
+                            if m:
+                                out["lastPostDate"] = m.group(0)
+                except Exception:
+                    pass
+                break
+        except Exception:
+            continue
+    return out
+
+
+def _footprint_review_portals(name, location):
+    """Sucht auf Kununu, TrustPilot, ProvenExpert."""
+    portals = [
+        ("Kununu", "kununu.com"),
+        ("TrustPilot", "trustpilot.com"),
+        ("ProvenExpert", "provenexpert.com"),
+    ]
+    out = []
+    for disp, dom in portals:
+        try:
+            results = _ddg_search(f'"{name}" site:{dom}')
+            found_url = None
+            for r in results:
+                if dom in r["url"].lower():
+                    found_url = r["url"]
+                    break
+            out.append({"name": disp, "url": found_url, "found": found_url is not None})
+        except Exception:
+            out.append({"name": disp, "url": None, "found": False})
+    return out
+
+
+def _footprint_backlinks(website):
+    """Schätzt Backlinks durch Suche nach der Domain."""
+    out = {"estimatedBacklinks": 0, "sources": []}
+    if not website:
+        return out
+    try:
+        if not website.startswith(("http://", "https://")):
+            website = "https://" + website
+        domain = urlparse(website).netloc
+        results = _ddg_search(f'"{domain}" -site:{domain}')
+        out["estimatedBacklinks"] = len(results)
+        out["sources"] = [r["url"] for r in results[:5]]
+    except Exception:
+        pass
+    return out
+
+
+def _build_conversation_guide(company, analysis, web_extras, social_media, reviews_info, location):
+    """Strukturierter Gesprächsleitfaden für den Vertrieb."""
+    owner = company.get("owner")
+    anrede = f"Herr/Frau {owner}" if owner else "Herr/Frau [Name]"
+
+    pain_points = []
+    lt = analysis.get("loadTime")
+    if lt and lt >= 3:
+        pain_points.append(f"Ihre Website lädt in {lt} Sekunden — das kostet Sie Besucher.")
+    if not analysis.get("https"):
+        pain_points.append("Sie haben kein HTTPS — der Browser warnt Besucher vor Ihrer Seite.")
+    if not analysis.get("hasMobile"):
+        pain_points.append("Ihre Website ist nicht für Smartphones optimiert.")
+    if not analysis.get("metaDescription"):
+        pain_points.append("Es fehlt eine Meta Description — Google zeigt nur zufälligen Text.")
+    if not (web_extras["trackingCodes"].get("googleAnalytics") or web_extras["trackingCodes"].get("googleTagManager")):
+        pain_points.append("Sie haben kein Website-Tracking — Sie sehen nicht, woher Besucher kommen.")
+
+    icebreaker = "Ich habe gesehen, dass Sie online schon gut aufgestellt sind"
+    if reviews_info:
+        icebreaker = f"Ich habe gesehen, dass Sie bereits {reviews_info} haben — Glückwunsch!"
+    elif analysis.get("title"):
+        icebreaker = f"Ich bin auf Ihre Website gestoßen ({analysis.get('title')[:50]}) und mir ist etwas aufgefallen."
+
+    last_mod = web_extras.get("lastModified")
+    urgency = "Eine veraltete Website verliert kontinuierlich an Ranking."
+    if last_mod:
+        urgency = f"Ihre Website wurde laut Server zuletzt am {last_mod} aktualisiert."
+
+    return {
+        "opening": f"Guten Tag {anrede}, mein Name ist [Ihr Name] von seo.solutions.",
+        "icebreaker": icebreaker,
+        "painPoints": pain_points or ["Wir haben Ihre Online-Präsenz analysiert und einige Potenziale gefunden."],
+        "solution": "Wir könnten für Sie diese Punkte beheben und Ihre Sichtbarkeit bei Google deutlich steigern.",
+        "urgency": urgency,
+        "competitorHint": f"Ihre Mitbewerber in {location or 'Ihrer Region'} haben in diesen Bereichen bereits aufgerüstet." if location else "Ihre Mitbewerber haben in diesen Bereichen bereits aufgerüstet.",
+    }
 
 
 def _build_seo_explanations(analysis):
@@ -1752,6 +2023,14 @@ def company_footprint():
         if website:
             tasks["analysis"] = pool.submit(quick_analyze, website)
             tasks["web_extras"] = pool.submit(_footprint_website_extras, website)
+            tasks["impressum"] = pool.submit(_footprint_impressum, website)
+            tasks["domain"] = pool.submit(ddg_rate_limited, _footprint_domain, website)
+            tasks["wayback"] = pool.submit(_footprint_wayback, website)
+            tasks["indexed"] = pool.submit(ddg_rate_limited, _footprint_indexed_pages, website)
+            tasks["blog"] = pool.submit(_footprint_blog, website)
+            tasks["backlinks"] = pool.submit(ddg_rate_limited, _footprint_backlinks, website)
+        tasks["facebookAds"] = pool.submit(ddg_rate_limited, _footprint_facebook_ads, name, location)
+        tasks["reviewPortals"] = pool.submit(ddg_rate_limited, _footprint_review_portals, name, location)
         for plat, dom in social_targets:
             tasks[f"social:{plat}"] = pool.submit(ddg_rate_limited, _footprint_social, name, plat, dom)
         for disp, dom in directory_targets:
@@ -1779,6 +2058,17 @@ def company_footprint():
         directories = [res(f"dir:{d}", {"name": d, "url": None, "found": False}) for d, _ in directory_targets]
         maps_url = res("maps")
         reviews_info = res("reviews")
+        facebook_ads = res("facebookAds") or {"adsLibraryUrl": None, "foundInSearch": False, "searchResults": []}
+        impressum = res("impressum") or {"found": False, "url": None, "owner": None,
+                                         "firmenbuch": None, "uid": None, "phones": [], "emails": []}
+        domain_info = res("domain") or {"domain": None, "registrationDate": None,
+                                        "hostingProvider": None, "searchResults": []}
+        wayback = res("wayback") or {"available": False, "firstSnapshot": None,
+                                     "snapshotUrl": None, "totalSnapshots": None}
+        indexed_pages = res("indexed") or {"estimatedPages": 0, "indexedUrls": []}
+        blog = res("blog") or {"hasBlog": False, "blogUrl": None, "lastPostDate": None}
+        backlinks = res("backlinks") or {"estimatedBacklinks": 0, "sources": []}
+        review_portals = res("reviewPortals") or []
 
     # Firmen-Stammdaten zusammenführen (Request-Werte haben Vorrang, WKO ergänzt)
     phones = []
@@ -1791,6 +2081,13 @@ def company_footprint():
     if email:
         emails.append(email)
     for e in wko.get("emails", []):
+        if e not in emails:
+            emails.append(e)
+    # Impressum-Kontaktdaten ergänzen
+    for p in impressum.get("phones", []):
+        if p not in phones:
+            phones.append(p)
+    for e in impressum.get("emails", []):
         if e not in emails:
             emails.append(e)
 
@@ -1807,23 +2104,35 @@ def company_footprint():
 
     google_presence = {"mapsUrl": maps_url, "reviewsInfo": reviews_info}
 
+    company = {
+        "name": name,
+        "owner": wko.get("owner") or impressum.get("owner"),
+        "phones": phones,
+        "emails": emails,
+        "address": wko.get("address") or location,
+        "website": final_website,
+        "category": wko.get("category", ""),
+        "uid": wko.get("uid") or impressum.get("uid"),
+        "firmenbuch": impressum.get("firmenbuch"),
+    }
+
     response = {
-        "company": {
-            "name": name,
-            "owner": wko.get("owner"),
-            "phones": phones,
-            "emails": emails,
-            "address": wko.get("address") or location,
-            "website": final_website,
-            "category": wko.get("category", ""),
-            "uid": wko.get("uid"),
-        },
+        "company": company,
         "website": website_block,
         "socialMedia": social_media,
         "googlePresence": google_presence,
         "directories": directories,
+        "facebookAds": facebook_ads,
+        "impressum": impressum,
+        "domainInfo": domain_info,
+        "wayback": wayback,
+        "indexedPages": indexed_pages,
+        "blog": blog,
+        "reviews": review_portals,
+        "backlinks": backlinks,
         "seoExplanations": _build_seo_explanations(analysis) if website else [],
         "salesTips": _build_sales_tips(analysis, web_extras, social_media, directories, google_presence) if website else [],
+        "conversationGuide": _build_conversation_guide(company, analysis, web_extras, social_media, reviews_info, location) if website else {},
     }
 
     cache_set(cache_key, response)
