@@ -532,7 +532,7 @@ function renderResultCard(biz, i) {
         onclick="saveFirma(${i})" ${saved ? 'disabled' : ''}>
         ${saved ? '✓ Gespeichert' : '★ Speichern'}
       </button>
-      ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite(${jsArg(biz.website)})'>SEO Details</button>` : ''}
+      ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite(${jsArg(biz.website)})'>Details</button>` : ''}
     </div>
   </div>`;
 }
@@ -815,49 +815,57 @@ function renderFirmaCard(f) {
   const hasWeb = !!f.website;
   const online = f.seoData?.online !== false && hasWeb;
   const sd = f.seoData || {};
-  const scoreColor = hasWeb ? scoreColorFor(s) : 'var(--ff-muted)';
+  const scoreColor = hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--ff-muted)';
 
   const pill = (ok, on, off) => ok
     ? `<span class="badge badge-success" style="font-size:9px">✓ ${on}</span>`
     : `<span class="badge badge-error" style="font-size:9px">✗ ${off}</span>`;
+
+  // SEO Score Bar (wie in Suchergebnissen)
+  const scoreBar = hasWeb && typeof s === 'number' ? `<div style="margin:8px 0 6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+      <span style="font-size:11px;font-weight:600;color:var(--ff-text-soft)">SEO Score</span>
+      <span style="font-size:14px;font-weight:900;color:${scoreColor}">${s}/100</span>
+    </div>
+    <div style="height:6px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:3px;overflow:hidden">
+      <div style="height:100%;width:${s}%;background:${scoreColor};border-radius:3px;transition:width 0.6s ease"></div>
+    </div>
+  </div>` : '';
 
   return `<div class="website-item" style="align-items:flex-start;padding:20px;margin-bottom:12px">
     <div style="width:56px;height:56px;border-radius:14px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '18px' : '22px'};font-weight:950;flex-shrink:0">
       ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
     </div>
     <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
         <strong style="font-size:16px;color:var(--ff-navy)">${escHtml(f.name)}</strong>
         ${f.category ? `<span class="search-result-category">${escHtml(f.category)}</span>` : ''}
         ${f.source ? `<span class="badge badge-blue" style="font-size:9px">${escHtml(f.source)}</span>` : ''}
-        <span class="badge ${typeof s === 'number' ? scoreBadgeClass(s) : ''}" style="font-size:10px">
-          ${hasWeb ? (online ? `SEO ${typeof s === 'number' ? s : '?'}/100` : '⚠️ Offline') : '🚫 Keine Website'}
-        </span>
       </div>
 
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px 16px;font-size:13px;margin-bottom:8px">
-        ${f.address ? `<div style="display:flex;gap:6px;align-items:flex-start"><span style="color:var(--ff-muted);flex-shrink:0">📍</span><span>${escHtml(f.address)}</span></div>` : ''}
-        ${f.phone ? `<div><span style="color:var(--ff-muted)">📞</span> <a href="tel:${escAttr(f.phone)}" style="font-weight:750">${escHtml(f.phone)}</a></div>` : '<div><span style="color:var(--ff-muted)">📞</span> <span style="color:var(--ff-danger);font-size:12px">Nicht verfügbar</span></div>'}
-        ${f.email ? `<div><span style="color:var(--ff-muted)">✉</span> <a href="mailto:${escAttr(f.email)}" style="font-weight:750">${escHtml(f.email)}</a></div>` : '<div><span style="color:var(--ff-muted)">✉</span> <span style="color:var(--ff-danger);font-size:12px">Nicht verfügbar</span></div>'}
-        ${f.website ? `<div><span style="color:var(--ff-muted)">🌐</span> <a href="${escAttr(f.website)}" target="_blank" rel="noopener" style="font-weight:750;word-break:break-all">${escHtml(f.website.replace(/^https?:\/\//, ''))}</a></div>` : '<div><span style="color:var(--ff-muted)">🌐</span> <span style="color:var(--ff-danger);font-size:12px">Keine Website</span></div>'}
-      </div>
+      ${scoreBar}
 
-      ${hasWeb ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">
+      ${hasWeb ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">
         ${pill(sd.title, 'Title', 'Kein Title')}
         ${pill(sd.metaDescription, 'Meta', 'Keine Meta')}
         ${pill(sd.hasH1, 'H1', 'Kein H1')}
         ${pill(sd.https, 'HTTPS', 'Kein HTTPS')}
         ${pill(sd.hasMobile, 'Mobil', 'Nicht mobil')}
         ${sd.loadTime != null ? `<span class="badge badge-blue" style="font-size:9px">⚡ ${sd.loadTime}s</span>` : ''}
-        ${sd.wordCount != null ? `<span class="badge badge-blue" style="font-size:9px">${sd.wordCount} Wörter</span>` : ''}
-      </div>` : ''}
+        ${sd.wordCount != null ? `<span class="badge badge-blue" style="font-size:9px">${sd.wordCount} W</span>` : ''}
+      </div>` : '<div style="margin:6px 0;padding:6px 10px;background:var(--ff-danger-bg,rgba(239,68,68,0.08));border-radius:8px;font-size:12px;color:var(--ff-danger);font-weight:600">🚫 Keine Website vorhanden</div>'}
 
-      ${sd.siteTitle ? `<div style="font-size:11px;color:var(--ff-muted);font-style:italic">Seitentitel: "${escHtml(sd.siteTitle)}"</div>` : ''}
-      <div style="font-size:11px;color:var(--ff-muted);margin-top:4px">Gespeichert: ${fmtDate(f.savedAt)} · Quelle: ${escHtml(f.source || '—')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 14px;font-size:12.5px;margin-bottom:6px">
+        ${f.address ? `<div>📍 ${escHtml(f.address)}</div>` : ''}
+        ${f.phone ? `<div>📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a></div>` : ''}
+        ${f.email ? `<div>✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></div>` : ''}
+        ${f.website ? `<div>🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a></div>` : ''}
+      </div>
+
+      <div style="font-size:11px;color:var(--ff-muted)">Gespeichert: ${fmtDate(f.savedAt)} · Quelle: ${escHtml(f.source || '—')}</div>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-      ${f.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite(${jsArg(f.website)})'>SEO Details</button>` : ''}
-      ${f.website ? `<button class="btn btn-sm btn-primary" onclick='addBusinessAsWebsite(${jsArg({ name: f.name, website: f.website, category: f.category })})'>→ Website</button>` : ''}
+      <button class="btn btn-sm btn-primary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
       <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
     </div>
   </div>`;
@@ -869,6 +877,159 @@ function deleteFirma(id) {
   renderFirmenPage();
   updateFirmenBadge();
   showToast('Firma entfernt.', 'success');
+}
+
+// =====================================================================
+// FIRMA DETAILS — umfassendes Detail-Modal
+// =====================================================================
+async function showFirmaDetails(id) {
+  const f = state.firmen.find(x => x.id === id);
+  if (!f) return;
+
+  openModal('analyzeModal');
+  setText('analyzeModalTitle', f.name);
+
+  const body = $('analyzeModalBody');
+  body.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;gap:12px;padding:40px;color:var(--ff-blue)">
+    <div class="spinner"></div>
+    Details werden geladen und Internet-Recherche gestartet...
+  </div>`;
+
+  // Parallel: Website analysieren + Internet-Recherche
+  let analysis = null;
+  let companyDetails = null;
+
+  try {
+    const promises = [];
+    if (f.website) {
+      promises.push(
+        fetch(API_BASE + '/api/websites/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: f.website }),
+        }).then(r => r.json()).then(d => { analysis = d; }).catch(() => {})
+      );
+    }
+    // Internet-Recherche über Company Details Endpoint
+    promises.push(
+      fetch(API_BASE + '/api/company/details', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: f.name, location: f.address || '', phone: f.phone || '', email: f.email || '' }),
+      }).then(r => r.json()).then(d => { companyDetails = d; }).catch(() => {})
+    );
+
+    await Promise.all(promises);
+  } catch (e) { /* ignore */ }
+
+  const s = analysis?.seoScore ?? f.seoScore;
+  const scoreColor = typeof s === 'number' ? scoreColorFor(s) : 'var(--ff-muted)';
+  const sd = analysis ? buildSeoData({ ...analysis, url: f.website }) : (f.seoData || {});
+  const recs = seoRecommendations(sd);
+
+  // Positive Punkte
+  const goods = [];
+  if (sd.title || sd.siteTitle) goods.push('✅ Title-Tag vorhanden');
+  if (sd.metaDescription) goods.push('✅ Meta Description vorhanden');
+  if (sd.hasH1) goods.push('✅ H1-Überschrift vorhanden');
+  if (sd.https) goods.push('✅ HTTPS/SSL aktiv');
+  if (sd.hasMobile) goods.push('✅ Mobil-optimiert');
+  if (sd.loadTime && sd.loadTime < 2) goods.push(`✅ Schnelle Ladezeit (${sd.loadTime}s)`);
+  if (analysis?.hasSchema) goods.push('✅ Strukturierte Daten (Schema.org)');
+  if (analysis?.hasOG) goods.push('✅ Open Graph Tags');
+  if (analysis?.hasCanonical) goods.push('✅ Canonical Tag');
+  if (analysis?.hasFavicon) goods.push('✅ Favicon vorhanden');
+
+  // Score Ring
+  const scoreRing = typeof s === 'number' ? `
+    <div class="score-ring" style="flex-shrink:0">
+      <svg viewBox="0 0 110 110" width="100" height="100">
+        <circle class="score-ring-track" cx="55" cy="55" r="44"/>
+        <circle class="score-ring-fill" cx="55" cy="55" r="44"
+          stroke-dasharray="276.46" stroke-dashoffset="${276.46 - (276.46 * s / 100)}"
+          style="stroke:${scoreColor}"/>
+      </svg>
+      <div class="score-ring-value">
+        <strong style="color:${scoreColor};font-size:22px">${s}</strong>
+        <span>SEO</span>
+      </div>
+    </div>` : '';
+
+  // Technologies
+  const techs = analysis?.technologies || [];
+  const techHtml = techs.length ? `<div style="margin-top:10px"><strong style="font-size:12px;color:var(--ff-navy)">Erkannte Technologien</strong>
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${techs.map(t => `<span class="badge badge-blue" style="font-size:10px">${escHtml(t)}</span>`).join('')}</div></div>` : '';
+
+  // Company Details from Internet
+  const cd = companyDetails || {};
+  const extraInfo = [];
+  if (cd.phones?.length) extraInfo.push({ icon: '📞', label: 'Telefonnummern', value: cd.phones.join(', ') });
+  if (cd.emails?.length) extraInfo.push({ icon: '✉', label: 'E-Mail Adressen', value: cd.emails.join(', ') });
+  if (cd.websites?.length) extraInfo.push({ icon: '🌐', label: 'Gefundene URLs', value: cd.websites.map(u => `<a href="${escAttr(u)}" target="_blank">${escHtml(u.replace(/^https?:\/\/(www\.)?/,'').slice(0,40))}</a>`).join(', ') });
+  if (cd.description) extraInfo.push({ icon: '📝', label: 'Beschreibung', value: escHtml(cd.description) });
+
+  const extraHtml = extraInfo.length ? `
+    <div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:14px">
+      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">🔍 Internet-Recherche</strong>
+      ${extraInfo.map(e => `<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--ff-muted)">${e.icon} ${e.label}:</span> ${e.value}</div>`).join('')}
+    </div>` : '';
+
+  body.innerHTML = `
+    <div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:16px;flex-wrap:wrap">
+      ${scoreRing}
+      <div style="flex:1;min-width:200px">
+        <h3 style="font-size:18px;font-weight:800;color:var(--ff-navy);margin-bottom:2px">${escHtml(f.name)}</h3>
+        ${f.category ? `<span class="search-result-category" style="margin-bottom:6px">${escHtml(f.category)}</span>` : ''}
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 12px;font-size:12.5px;margin-top:8px">
+          ${f.address ? `<div>📍 ${escHtml(f.address)}</div>` : ''}
+          ${f.phone ? `<div>📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a></div>` : '<div>📞 <span style="color:var(--ff-danger)">Nicht verfügbar</span></div>'}
+          ${f.email ? `<div>✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></div>` : '<div>✉ <span style="color:var(--ff-danger)">Nicht verfügbar</span></div>'}
+          ${f.website ? `<div>🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/,'').slice(0,30))}</a></div>` : '<div>🌐 <span style="color:var(--ff-danger)">Keine Website</span></div>'}
+        </div>
+        <div style="font-size:11px;color:var(--ff-muted);margin-top:6px">Quelle: ${escHtml(f.source || '—')} · Gespeichert: ${fmtDate(f.savedAt)}</div>
+      </div>
+    </div>
+
+    ${f.website && analysis ? `
+    <div style="border-top:0.5px solid var(--ff-line);padding-top:14px;margin-top:4px">
+      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">Website-Analyse</strong>
+      ${analysis.title ? `<div style="font-size:12px;color:var(--ff-muted);margin-bottom:8px">📄 Seitentitel: "${escHtml(analysis.title)}"</div>` : ''}
+
+      ${goods.length ? `<div style="margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--ff-success);margin-bottom:4px">Was gut ist:</div>
+        ${goods.map(g => `<div style="font-size:12px;color:var(--ff-success);padding:2px 0">${g}</div>`).join('')}
+      </div>` : ''}
+
+      ${recs.length ? `<div style="margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--ff-danger);margin-bottom:4px">Was verbessert werden muss:</div>
+        ${recs.map(r => `<div style="font-size:12px;color:var(--ff-danger);padding:2px 0">❌ ${escHtml(r)}</div>`).join('')}
+      </div>` : '<div style="font-size:12px;color:var(--ff-success);font-weight:600;margin-bottom:8px">✅ Keine kritischen Probleme gefunden!</div>'}
+
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;margin-top:8px">
+        ${analysis.wordCount != null ? `<div class="badge badge-blue" style="font-size:10px">📝 ${analysis.wordCount} Wörter</div>` : ''}
+        ${analysis.loadTime != null ? `<div class="badge badge-blue" style="font-size:10px">⚡ ${analysis.loadTime}s Ladezeit</div>` : ''}
+        ${analysis.imagesTotal != null ? `<div class="badge badge-blue" style="font-size:10px">🖼️ ${analysis.imagesTotal} Bilder (${analysis.imagesWithAlt || 0} mit Alt)</div>` : ''}
+        ${analysis.internalLinks != null ? `<div class="badge badge-blue" style="font-size:10px">🔗 ${analysis.internalLinks} interne Links</div>` : ''}
+        ${analysis.externalLinks != null ? `<div class="badge badge-blue" style="font-size:10px">🔗 ${analysis.externalLinks} externe Links</div>` : ''}
+        ${analysis.cssFiles != null ? `<div class="badge badge-blue" style="font-size:10px">🎨 ${analysis.cssFiles} CSS</div>` : ''}
+        ${analysis.jsFiles != null ? `<div class="badge badge-blue" style="font-size:10px">⚙️ ${analysis.jsFiles} JS</div>` : ''}
+      </div>
+      ${techHtml}
+    </div>` : f.website ? '<div style="padding:12px;font-size:13px;color:var(--ff-warning)">⚠️ Website-Analyse fehlgeschlagen</div>' : ''}
+
+    ${extraHtml}
+
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      ${f.website ? `<a href="${escAttr(f.website)}" target="_blank" class="btn btn-secondary">🌐 Website öffnen</a>` : ''}
+      <button class="btn btn-secondary" onclick="closeModal('analyzeModal')">Schließen</button>
+    </div>`;
+
+  // Update stored seoData if we got fresh analysis
+  if (analysis && typeof analysis.seoScore === 'number') {
+    f.seoScore = analysis.seoScore;
+    f.seoData = buildSeoData({ ...analysis, url: f.website });
+    saveState();
+  }
 }
 
 // =====================================================================
