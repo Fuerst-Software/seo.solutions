@@ -1634,9 +1634,9 @@ def _footprint_facebook_ads(name, location):
 
 
 def _footprint_impressum(website):
-    """Scrapt /impressum, /imprint, /about auf der Website und extrahiert Stammdaten."""
+    """Scrapt ALLE Unterseiten nach Stammdaten — nicht nur Impressum."""
     out = {"found": False, "url": None, "owner": None, "firmenbuch": None,
-           "uid": None, "phones": [], "emails": []}
+           "uid": None, "phones": [], "emails": [], "foundOn": []}
     if not website:
         return out
     if not website.startswith(("http://", "https://")):
@@ -1646,43 +1646,96 @@ def _footprint_impressum(website):
         base = f"{parsed.scheme}://{parsed.netloc}"
     except Exception:
         return out
-    paths = ["/impressum", "/imprint", "/about", "/about-us", "/kontakt", "/contact"]
+
+    # Durchsuche ALLE relevanten Seiten (nicht nur die erste die matcht)
+    paths = ["/impressum", "/imprint", "/about", "/about-us", "/kontakt",
+             "/contact", "/ueber-uns", "/team", "/unternehmen", "/company",
+             "/datenschutz", "/agb", "/legal"]
+    all_phones = set()
+    all_emails = set()
+
     for path in paths:
         try:
-            resp = requests.get(base + path, headers=SEARCH_HEADERS, timeout=8, allow_redirects=True)
+            resp = requests.get(base + path, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
             if resp.status_code != 200 or len(resp.text) < 200:
                 continue
             out["found"] = True
-            out["url"] = resp.url
+            out["foundOn"].append(path)
             soup = BeautifulSoup(resp.text, "html.parser")
             text = soup.get_text(" ", strip=True)
 
-            m = re.search(r"(?:Gesch[äa]ftsf[üu]hrer|Inhaber|CEO|Eigent[üu]mer)\s*:?\s*([A-ZÄÖÜ][\wäöüß.\-]+(?:\s+[A-ZÄÖÜ][\wäöüß.\-]+){0,3})", text)
-            if m and not out["owner"]:
-                out["owner"] = m.group(1).strip()
-            fn = re.search(r"FN\s*\d+\s*[a-z]", text)
-            if fn and not out["firmenbuch"]:
-                out["firmenbuch"] = fn.group(0).strip()
-            uid = re.search(r"ATU\d{8}", text)
-            if uid and not out["uid"]:
-                out["uid"] = uid.group(0)
+            # Geschäftsführer — mehrere Patterns
+            if not out["owner"]:
+                patterns = [
+                    r"(?:Gesch[äa]ftsf[üu]hrer|Inhaber|Eigent[üu]mer|CEO|Managing\s*Director|Firmeninhaber|Betriebsleiter)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß.\-]+){1,3})",
+                    r"(?:Verantwortlich|V\.?i\.?S\.?d\.?P\.?|Medieninhaber)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß.\-]+){1,3})",
+                ]
+                for pat in patterns:
+                    m = re.search(pat, text)
+                    if m:
+                        name_candidate = m.group(1).strip()
+                        # Validierung: muss Vor- + Nachname sein (mind. 2 Wörter)
+                        if len(name_candidate.split()) >= 2 and len(name_candidate) < 60:
+                            out["owner"] = name_candidate
+                            break
+
+            # Firmenbuch
+            if not out["firmenbuch"]:
+                fn = re.search(r"FN\s*\d{3,7}\s*[a-z]", text, re.I)
+                if fn:
+                    out["firmenbuch"] = fn.group(0).strip()
+
+            # UID
+            if not out["uid"]:
+                uid = re.search(r"ATU\d{8}", text)
+                if uid:
+                    out["uid"] = uid.group(0)
+
+            # Telefonnummern
             for tel in soup.select("a[href^='tel:']"):
                 num = tel["href"].replace("tel:", "").strip()
-                if num and num not in out["phones"]:
-                    out["phones"].append(num)
+                if num and len(num) > 5:
+                    all_phones.add(num)
+            # Auch Telefon-Patterns im Text
+            for tel_match in re.findall(r"(?:Tel|Telefon|Phone|Fon|Mobil)\s*\.?\s*:?\s*([\+\d\s/\-\(\)]{8,20})", text):
+                cleaned = tel_match.strip()
+                if cleaned and len(cleaned) > 6:
+                    all_phones.add(cleaned)
+
+            # Emails
             for mail in soup.select("a[href^='mailto:']"):
-                em = mail["href"].replace("mailto:", "").split("?")[0].strip()
-                if em and em not in out["emails"]:
-                    out["emails"].append(em)
-            break
+                em = mail["href"].replace("mailto:", "").split("?")[0].strip().lower()
+                if em and "@" in em:
+                    all_emails.add(em)
+            # Auch Email-Patterns im Text
+            for em_match in re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text):
+                all_emails.add(em_match.lower())
+
         except Exception:
             continue
+
+    out["phones"] = list(all_phones)[:8]
+    out["emails"] = list(all_emails)[:8]
+
+    # Wenn kein Owner gefunden: auch die Startseite prüfen
+    if not out["owner"]:
+        try:
+            resp = requests.get(base, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
+            if resp.status_code == 200:
+                text = BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True)
+                m = re.search(r"(?:Gesch[äa]ftsf[üu]hrer|Inhaber)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß.\-]+){1,3})", text)
+                if m and len(m.group(1).split()) >= 2:
+                    out["owner"] = m.group(1).strip()
+        except Exception:
+            pass
+
     return out
 
 
 def _footprint_domain(website):
-    """WHOIS-ähnliche Info über DuckDuckGo."""
-    out = {"domain": None, "registrationDate": None, "hostingProvider": None, "searchResults": []}
+    """Domain-Info: Server-Header, Hosting-Erkennung, SSL-Details."""
+    out = {"domain": None, "registeredSince": None, "hostingProvider": None,
+           "server": None, "protocol": None, "sslIssuer": None}
     if not website:
         return out
     try:
@@ -1690,16 +1743,62 @@ def _footprint_domain(website):
             website = "https://" + website
         domain = urlparse(website).netloc
         out["domain"] = domain
-        results = _ddg_search(f"{domain} whois registriert")
-        out["searchResults"] = results[:3]
-        for r in results:
-            text = (r.get("title", "") + " " + r.get("snippet", ""))
-            d = re.search(r"(\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4})", text)
-            if d and not out["registrationDate"]:
-                out["registrationDate"] = d.group(1)
-            h = re.search(r"(?:Hosting|Provider|Host|Registrar)\s*:?\s*([A-Za-z0-9 .\-]{3,40})", text, re.I)
-            if h and not out["hostingProvider"]:
-                out["hostingProvider"] = h.group(1).strip()
+
+        # HTTP Headers für Server-Info
+        try:
+            resp = requests.head(website, timeout=6, allow_redirects=True,
+                                 headers={"User-Agent": "Mozilla/5.0"})
+            headers = resp.headers
+            out["server"] = headers.get("Server", "")
+            out["protocol"] = "HTTP/2" if resp.raw.version == 20 else "HTTP/1.1"
+
+            # Hosting erkennen aus Headers
+            if "cloudflare" in str(headers).lower():
+                out["hostingProvider"] = "Cloudflare"
+            elif "nginx" in out["server"].lower():
+                out["hostingProvider"] = "Nginx Server"
+            elif "apache" in out["server"].lower():
+                out["hostingProvider"] = "Apache Server"
+            elif "litespeed" in out["server"].lower():
+                out["hostingProvider"] = "LiteSpeed"
+
+            # CDN erkennen
+            cdn_headers = ["x-cdn", "x-cache", "cf-ray", "x-fastly-request-id", "x-amz-cf-id"]
+            for h in cdn_headers:
+                if h in (k.lower() for k in headers.keys()):
+                    out["cdn"] = True
+                    break
+        except Exception:
+            pass
+
+        # Website-Alter aus Wayback Machine (zuverlässigste Quelle)
+        try:
+            ts_resp = requests.get(
+                f"https://archive.org/wayback/available?url={domain}&timestamp=19900101",
+                timeout=8
+            )
+            if ts_resp.status_code == 200:
+                ts_data = ts_resp.json()
+                snap = ts_data.get("archived_snapshots", {}).get("closest", {})
+                if snap.get("timestamp"):
+                    ts = snap["timestamp"]
+                    out["registeredSince"] = f"{ts[:4]}-{ts[4:6]}-{ts[6:8]}"
+        except Exception:
+            pass
+
+        # Fallback: DuckDuckGo WHOIS
+        if not out["registeredSince"]:
+            try:
+                results = ddg_rate_limited(f"{domain} whois registered created")
+                for r in results[:3]:
+                    text = r.get("title", "") + " " + r.get("snippet", "")
+                    d = re.search(r"(?:Creat|Regist)\w*\s*(?:Date|on)?\s*:?\s*(\d{4}-\d{2}-\d{2})", text, re.I)
+                    if d:
+                        out["registeredSince"] = d.group(1)
+                        break
+            except Exception:
+                pass
+
     except Exception:
         pass
     return out
