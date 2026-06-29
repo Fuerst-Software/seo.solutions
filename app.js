@@ -1551,8 +1551,10 @@ function toggleDarkMode() {
 
 function loadDarkMode() {
   const saved = localStorage.getItem('seo_darkmode');
-  if (saved === '1' || (saved === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+  if (saved === '1') {
     document.body.classList.add('dark');
+  } else {
+    document.body.classList.remove('dark');
   }
   updateThemeToggleIcon();
 }
