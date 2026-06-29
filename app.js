@@ -890,57 +890,338 @@ async function showFirmaDetails(id) {
   setText('analyzeModalTitle', f.name);
 
   const body = $('analyzeModalBody');
-  body.innerHTML = `<div style="display:flex;justify-content:center;align-items:center;gap:12px;padding:40px;color:var(--ff-blue)">
-    <div class="spinner"></div>
-    Details werden geladen und Internet-Recherche gestartet...
+  body.innerHTML = `<div style="display:flex;flex-direction:column;justify-content:center;align-items:center;gap:14px;padding:48px;color:var(--ff-blue)">
+    <div class="spinner" style="width:28px;height:28px;border-width:3px;border-color:rgba(11,92,255,.2);border-top-color:var(--ff-blue)"></div>
+    <strong id="footprintPhase" style="font-size:15px">Digitaler Fußabdruck wird analysiert...</strong>
+    <span id="footprintPhaseSub" style="font-size:12px;color:var(--ff-muted)">Website, Social Media & Verzeichnisse werden geprüft</span>
   </div>`;
 
-  // Parallel: Website analysieren + Internet-Recherche
-  let analysis = null;
-  let companyDetails = null;
+  // Phasen-Animation während Backend arbeitet
+  const phases = [
+    ['Website wird analysiert...', 'SEO-Faktoren & Technologien werden geprüft'],
+    ['Social Media wird durchsucht...', 'Facebook, Instagram, LinkedIn & Co.'],
+    ['Online-Verzeichnisse werden geprüft...', 'Herold, FirmenABC, Gelbe Seiten, Yelp'],
+    ['Verkaufstipps werden erstellt...', 'Stärken & Schwächen werden ausgewertet'],
+  ];
+  let pi = 0;
+  const phaseTimer = setInterval(() => {
+    pi = (pi + 1) % phases.length;
+    const p = $('footprintPhase'); if (p) p.textContent = phases[pi][0];
+    const sub = $('footprintPhaseSub'); if (sub) sub.textContent = phases[pi][1];
+  }, 1600);
 
+  let footprint = null;
   try {
-    const promises = [];
-    if (f.website) {
-      promises.push(
-        fetch(API_BASE + '/api/websites/analyze', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: f.website }),
-        }).then(r => r.json()).then(d => { analysis = d; }).catch(() => {})
-      );
-    }
-    // Internet-Recherche über Company Details Endpoint
-    promises.push(
-      fetch(API_BASE + '/api/company/details', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: f.name, location: f.address || '', phone: f.phone || '', email: f.email || '' }),
-      }).then(r => r.json()).then(d => { companyDetails = d; }).catch(() => {})
-    );
+    const res = await fetch(API_BASE + '/api/company/footprint', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: f.name,
+        location: f.address || '',
+        website: f.website || '',
+        phone: f.phone || '',
+        email: f.email || '',
+      }),
+    });
+    if (!res.ok) throw new Error('Server-Fehler (' + res.status + ')');
+    footprint = await res.json();
+    if (footprint && footprint.error) throw new Error(footprint.error);
+  } catch (e) {
+    clearInterval(phaseTimer);
+    renderFirmaDetailsFallback(f, e.message);
+    return;
+  }
+  clearInterval(phaseTimer);
 
-    await Promise.all(promises);
-  } catch (e) { /* ignore */ }
+  renderFirmaFootprint(f, footprint);
 
-  const s = analysis?.seoScore ?? f.seoScore;
+  // Frischen Score speichern, falls vorhanden
+  const fresh = footprint?.website?.seoScore;
+  if (typeof fresh === 'number') {
+    f.seoScore = fresh;
+    f.seoData = buildSeoData({
+      ...footprint.website,
+      url: f.website,
+      title: footprint.website.title,
+      metaDescription: footprint.website.metaDescription,
+    });
+    saveState();
+  }
+}
+
+// ---- Footprint Modal Rendering ----
+function renderFirmaFootprint(f, fp) {
+  fp = fp || {};
+  const company = fp.company || {};
+  const web = fp.website || null;
+  const social = fp.socialMedia || [];
+  const gp = fp.googlePresence || {};
+  const dirs = fp.directories || [];
+  const explanations = fp.seoExplanations || [];
+  const salesTips = fp.salesTips || [];
+
+  const body = $('analyzeModalBody');
+
+  // ---------- Tab: Übersicht ----------
+  const score = web && typeof web.seoScore === 'number' ? web.seoScore : (typeof f.seoScore === 'number' ? f.seoScore : null);
+  const scoreColor = typeof score === 'number' ? scoreColorFor(score) : 'var(--ff-muted)';
+
+  const scoreRing = typeof score === 'number' ? `
+    <div class="score-ring" style="flex-shrink:0">
+      <svg viewBox="0 0 110 110" width="100" height="100">
+        <circle class="score-ring-track" cx="55" cy="55" r="44"/>
+        <circle class="score-ring-fill" cx="55" cy="55" r="44"
+          stroke-dasharray="276.46" stroke-dashoffset="${276.46 - (276.46 * score / 100)}"
+          style="stroke:${scoreColor}"/>
+      </svg>
+      <div class="score-ring-value">
+        <strong style="color:${scoreColor};font-size:22px">${score}</strong>
+        <span>SEO</span>
+      </div>
+    </div>` : '';
+
+  const name = company.name || f.name;
+  const owner = company.owner || '';
+  const phones = company.phones && company.phones.length ? company.phones : (f.phone ? [f.phone] : []);
+  const emails = company.emails && company.emails.length ? company.emails : (f.email ? [f.email] : []);
+  const address = company.address || f.address || '';
+  const website = company.website || f.website || '';
+  const category = company.category || f.category || '';
+
+  const contactRow = (icon, html) => `<div style="margin-bottom:5px;font-size:13px">${icon} ${html}</div>`;
+
+  const overviewHtml = `
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
+      ${scoreRing}
+      <div style="flex:1;min-width:220px">
+        <h3 style="font-size:22px;font-weight:900;color:var(--ff-navy);margin-bottom:4px">${escHtml(name)}</h3>
+        ${category ? `<span class="search-result-category" style="margin-bottom:8px">${escHtml(category)}</span>` : ''}
+        ${owner ? `<div style="margin:8px 0;padding:10px 12px;background:var(--ff-bg-soft,#f0f0f5);border-radius:10px">
+          <span style="font-size:11px;color:var(--ff-muted);display:block">Geschäftsführer / Inhaber</span>
+          <strong style="font-size:15px;color:var(--ff-navy)">👤 ${escHtml(owner)}</strong>
+        </div>` : ''}
+        <div style="margin-top:10px">
+          ${phones.length ? phones.map(p => contactRow('📞', `<a href="tel:${escAttr(p)}">${escHtml(p)}</a>`)).join('')
+            : contactRow('📞', '<span style="color:var(--ff-danger)">Keine Telefonnummer</span>')}
+          ${emails.length ? emails.map(em => contactRow('✉', `<a href="mailto:${escAttr(em)}">${escHtml(em)}</a>`)).join('')
+            : contactRow('✉', '<span style="color:var(--ff-danger)">Keine E-Mail</span>')}
+          ${address ? contactRow('📍', escHtml(address)) : ''}
+          ${website ? contactRow('🌐', `<a href="${escAttr(website)}" target="_blank" rel="noopener">${escHtml(website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 45))}</a>`)
+            : contactRow('🌐', '<span style="color:var(--ff-danger)">Keine Website</span>')}
+          ${gp.mapsUrl ? contactRow('🗺️', `<a href="${escAttr(gp.mapsUrl)}" target="_blank" rel="noopener">Google Maps Eintrag öffnen</a>`) : ''}
+        </div>
+        <div style="font-size:11px;color:var(--ff-muted);margin-top:10px">Quelle: ${escHtml(f.source || '—')} · Gespeichert: ${fmtDate(f.savedAt)}</div>
+      </div>
+    </div>`;
+
+  // ---------- Tab: Website-Analyse ----------
+  let websiteHtml;
+  if (web) {
+    const ws = typeof web.seoScore === 'number' ? web.seoScore : 0;
+    const wc = scoreColorFor(ws);
+    const scoreBar = `<div style="margin:4px 0 16px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+        <span style="font-size:12px;font-weight:600;color:var(--ff-text-soft)">SEO Score</span>
+        <span style="font-size:15px;font-weight:900;color:${wc}">${ws}/100</span>
+      </div>
+      <div style="height:10px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:5px;overflow:hidden">
+        <div style="height:100%;width:${ws}%;background:${wc};border-radius:5px;transition:width 0.6s ease"></div>
+      </div>
+    </div>`;
+
+    const factorStatusBadge = (status) => {
+      const st = String(status || '').toLowerCase();
+      if (st === 'good' || st === 'pass' || st === 'gut' || st === 'ok') return '<span class="badge badge-success" style="font-size:9px">Gut</span>';
+      if (st === 'warning' || st === 'warn' || st === 'mittel') return '<span class="badge badge-pending" style="font-size:9px">Mittel</span>';
+      if (st === 'bad' || st === 'fail' || st === 'schlecht') return '<span class="badge badge-error" style="font-size:9px">Schlecht</span>';
+      return status ? `<span class="badge" style="font-size:9px">${escHtml(status)}</span>` : '';
+    };
+    const factorIcon = (status) => {
+      const st = String(status || '').toLowerCase();
+      if (st === 'good' || st === 'pass' || st === 'gut' || st === 'ok') return 'pass';
+      if (st === 'bad' || st === 'fail' || st === 'schlecht') return 'fail';
+      return '';
+    };
+
+    const factorsHtml = explanations.length ? explanations.map(ex => `
+      <div class="seo-check-item ${factorIcon(ex.status)}" style="display:block;padding:10px 12px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <svg class="seo-check-icon" viewBox="0 0 24 24" fill="currentColor" style="flex-shrink:0">
+            ${factorIcon(ex.status) === 'pass' ? '<path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/>' : factorIcon(ex.status) === 'fail' ? '<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>' : '<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>'}
+          </svg>
+          <strong style="font-size:13px;color:var(--ff-navy)">${escHtml(ex.factor || '')}</strong>
+          ${(ex.score != null && ex.maxScore != null) ? `<span style="font-size:12px;font-weight:800;color:${wc}">${ex.score}/${ex.maxScore}</span>` : ''}
+          ${factorStatusBadge(ex.status)}
+        </div>
+        ${ex.explanation ? `<div style="font-size:12px;color:var(--ff-text-soft);margin-top:4px;margin-left:32px">${escHtml(ex.explanation)}</div>` : ''}
+      </div>`).join('') : '<div style="font-size:13px;color:var(--ff-muted);padding:8px 0">Keine detaillierten SEO-Faktoren verfügbar.</div>';
+
+    // Gut / Verbesserung aus seoData ableiten
+    const sd = buildSeoData({ ...web, url: website });
+    const goods = [];
+    if (web.title) goods.push('Title-Tag vorhanden');
+    if (web.metaDescription) goods.push('Meta Description vorhanden');
+    if (web.https) goods.push('HTTPS/SSL aktiv');
+    if (web.hasMobile) goods.push('Mobil-optimiert (responsive)');
+    if (web.hasSchema) goods.push('Strukturierte Daten (Schema.org)');
+    if (web.hasSitemap) goods.push('Sitemap vorhanden');
+    if (web.hasRobotsTxt) goods.push('Robots.txt vorhanden');
+    if (web.loadTime != null && web.loadTime < 2) goods.push(`Schnelle Ladezeit (${web.loadTime}s)`);
+    if (web.wordCount != null && web.wordCount >= 300) goods.push(`Ausreichend Inhalt (${web.wordCount} Wörter)`);
+
+    const bads = seoRecommendations(sd);
+    if (web.hasSitemap === false) bads.push('Keine Sitemap — erschwert die Indexierung durch Google.');
+    if (web.hasRobotsTxt === false) bads.push('Keine Robots.txt — Suchmaschinen-Steuerung fehlt.');
+
+    const goodsHtml = goods.length ? `<div style="margin:14px 0">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-success);margin-bottom:6px">✅ Was die Website GUT macht</div>
+      ${goods.map(g => `<div style="font-size:12.5px;color:var(--ff-success);padding:2px 0">✓ ${escHtml(g)}</div>`).join('')}
+    </div>` : '';
+
+    const badsHtml = bads.length ? `<div style="margin:14px 0">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-danger);margin-bottom:6px">❌ Was VERBESSERT werden muss</div>
+      ${bads.map(b => `<div style="font-size:12.5px;color:var(--ff-danger);padding:2px 0">✗ ${escHtml(b)}</div>`).join('')}
+    </div>` : '<div style="font-size:12.5px;color:var(--ff-success);font-weight:600;margin:14px 0">✅ Keine kritischen Probleme gefunden!</div>';
+
+    const techs = web.technologies || [];
+    const techHtml = techs.length ? `<div style="margin-top:14px">
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:4px">Erkannte Technologien</strong>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${techs.map(t => `<span class="badge badge-blue" style="font-size:10px">${escHtml(t)}</span>`).join('')}</div>
+    </div>` : '';
+
+    const tc = web.trackingCodes || {};
+    const yn = (v) => v ? '<span style="color:var(--ff-success);font-weight:700">✓</span>' : '<span style="color:var(--ff-danger);font-weight:700">✗</span>';
+    const trackingHtml = `<div style="margin-top:14px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Tracking & Technik</strong>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:4px 14px;font-size:12.5px">
+        <div>Google Analytics ${yn(tc.googleAnalytics)}</div>
+        <div>Google Tag Manager ${yn(tc.googleTagManager)}</div>
+        <div>Facebook Pixel ${yn(tc.facebookPixel)}</div>
+        <div>Google Ads ${yn(tc.googleAds)}</div>
+        <div>Sitemap ${yn(web.hasSitemap)}</div>
+        <div>Robots.txt ${yn(web.hasRobotsTxt)}</div>
+      </div>
+    </div>`;
+
+    websiteHtml = `
+      ${scoreBar}
+      ${web.title ? `<div style="font-size:12px;color:var(--ff-muted);margin-bottom:4px">📄 Titel: "${escHtml(web.title)}"</div>` : ''}
+      ${web.metaDescription ? `<div style="font-size:12px;color:var(--ff-muted);margin-bottom:10px">📝 Meta: "${escHtml(web.metaDescription)}"</div>` : ''}
+      <div class="seo-check-list" style="display:flex;flex-direction:column;gap:6px">${factorsHtml}</div>
+      ${goodsHtml}
+      ${badsHtml}
+      ${techHtml}
+      ${trackingHtml}`;
+  } else {
+    websiteHtml = '<div style="padding:24px;text-align:center;color:var(--ff-muted);font-size:13px">Keine Website vorhanden oder Analyse nicht möglich.<br><strong style="color:var(--ff-danger)">🚫 Potentieller Neukunde — Website-Erstellung anbieten!</strong></div>';
+  }
+
+  // ---------- Tab: Social Media ----------
+  const socialRow = (sm) => {
+    const found = sm.found && sm.url;
+    return `<div class="seo-check-item ${found ? 'pass' : 'fail'}" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+      <strong style="font-size:13px;color:var(--ff-navy);flex:1">${escHtml(sm.platform || '')}</strong>
+      ${found
+        ? `<span style="font-size:12px;color:var(--ff-success)">Gefunden ✅</span> <a href="${escAttr(sm.url)}" target="_blank" rel="noopener" class="badge badge-blue" style="font-size:10px">Öffnen</a>`
+        : '<span style="font-size:12px;color:var(--ff-danger)">Nicht gefunden ❌</span>'}
+    </div>`;
+  };
+  const onSiteLinks = web && web.socialLinksOnSite || [];
+  const socialHtml = `
+    ${social.length ? `<div style="display:flex;flex-direction:column;gap:6px">${social.map(socialRow).join('')}</div>`
+      : '<div style="font-size:13px;color:var(--ff-muted);padding:8px 0">Keine Social-Media-Profile geprüft.</div>'}
+    ${onSiteLinks.length ? `<div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:12px;color:var(--ff-navy);display:block;margin-bottom:6px">Auf der Website verlinkt</strong>
+      <div style="display:flex;gap:4px;flex-wrap:wrap">${onSiteLinks.map(l => `<a href="${escAttr(l)}" target="_blank" rel="noopener" class="badge badge-blue" style="font-size:10px">${escHtml(l.replace(/^https?:\/\/(www\.)?/, '').slice(0, 30))}</a>`).join('')}</div>
+    </div>` : ''}`;
+
+  // ---------- Tab: Online-Präsenz ----------
+  const dirRow = (d) => {
+    const found = d.found && d.url;
+    return `<div class="seo-check-item ${found ? 'pass' : 'fail'}" style="display:flex;align-items:center;gap:10px;padding:10px 12px">
+      <strong style="font-size:13px;color:var(--ff-navy);flex:1">${escHtml(d.name || '')}</strong>
+      ${found
+        ? `<span style="font-size:12px;color:var(--ff-success)">✅</span> <a href="${escAttr(d.url)}" target="_blank" rel="noopener" class="badge badge-blue" style="font-size:10px">Öffnen</a>`
+        : '<span style="font-size:12px;color:var(--ff-danger)">❌ Nicht eingetragen</span>'}
+    </div>`;
+  };
+  const presenceHtml = `
+    <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">Branchenverzeichnisse</strong>
+    ${dirs.length ? `<div style="display:flex;flex-direction:column;gap:6px">${dirs.map(dirRow).join('')}</div>`
+      : '<div style="font-size:13px;color:var(--ff-muted);padding:8px 0">Keine Verzeichnisse geprüft.</div>'}
+    <div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">Google</strong>
+      <div style="font-size:13px;margin-bottom:6px">🗺️ Google Maps Eintrag: ${gp.mapsUrl
+        ? `<a href="${escAttr(gp.mapsUrl)}" target="_blank" rel="noopener" style="color:var(--ff-success)">Vorhanden ✅</a>`
+        : '<span style="color:var(--ff-danger)">Nicht gefunden ❌</span>'}</div>
+      <div style="font-size:13px">⭐ Bewertungen: ${gp.reviewsInfo ? escHtml(gp.reviewsInfo) : '<span style="color:var(--ff-muted)">Keine Informationen</span>'}</div>
+    </div>`;
+
+  // ---------- Tab: Verkaufsgespräch ----------
+  const tipsHtml = salesTips.length ? salesTips.map((t, i) => `
+    <div class="card" style="display:flex;gap:12px;align-items:flex-start;padding:14px;margin-bottom:10px">
+      <div style="width:30px;height:30px;border-radius:8px;background:var(--ff-blue);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;flex-shrink:0">${i + 1}</div>
+      <div style="font-size:13px;color:var(--ff-text-soft);line-height:1.5">💡 ${escHtml(t)}</div>
+    </div>`).join('') : '<div style="font-size:13px;color:var(--ff-muted);padding:8px 0">Keine Verkaufstipps verfügbar.</div>';
+
+  // Gesprächseinstiege basierend auf Schwächen
+  const openers = [];
+  if (!web) openers.push('„Mir ist aufgefallen, dass Ihr Unternehmen noch keine eigene Website hat — möchten Sie online besser gefunden werden?"');
+  else {
+    if (web.https === false) openers.push('„Ihre Website nutzt noch kein HTTPS — das schreckt Besucher ab und kostet Google-Ranking. Das sollten wir beheben."');
+    if (web.hasMobile === false) openers.push('„Über die Hälfte aller Besucher kommt vom Handy — Ihre Website ist aktuell nicht mobil-optimiert."');
+    if (typeof web.seoScore === 'number' && web.seoScore < 50) openers.push(`„Ihre Website erreicht aktuell nur einen SEO-Score von ${web.seoScore}/100 — da liegt viel Potenzial brach."`);
+    if (web.hasSitemap === false) openers.push('„Ohne Sitemap findet Google viele Ihrer Seiten gar nicht — das lässt sich einfach beheben."');
+  }
+  const noSocial = social.filter(s => !s.found).map(s => s.platform).filter(Boolean);
+  if (noSocial.length) openers.push(`„Auf ${noSocial.slice(0, 3).join(', ')} sind Sie noch nicht vertreten — dort sind viele Ihrer Kunden aktiv."`);
+  if (gp.mapsUrl === undefined || !gp.mapsUrl) openers.push('„Sie haben noch keinen Google-Maps-Eintrag — damit verlieren Sie lokale Laufkundschaft."');
+
+  const openersHtml = openers.length ? `<div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:12px">
+    <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">🎯 Gesprächseinstiege</strong>
+    ${openers.map(o => `<div style="font-size:13px;color:var(--ff-text-soft);padding:8px 12px;background:var(--ff-bg-soft,#f0f0f5);border-radius:10px;margin-bottom:6px;font-style:italic">${escHtml(o)}</div>`).join('')}
+  </div>` : '';
+
+  const salesHtml = tipsHtml + openersHtml;
+
+  // ---------- Tab-Navigation zusammenbauen ----------
+  const tabs = [
+    { id: 'overview', label: 'Übersicht', html: overviewHtml },
+    { id: 'website', label: 'Website-Analyse', html: websiteHtml },
+    { id: 'social', label: 'Social Media', html: socialHtml },
+    { id: 'presence', label: 'Online-Präsenz', html: presenceHtml },
+    { id: 'sales', label: 'Verkaufsgespräch', html: salesHtml },
+  ];
+
+  const tabBtns = tabs.map((t, i) => `<button class="btn btn-sm ${i === 0 ? 'btn-primary' : 'btn-ghost'}" data-fp-tab="${t.id}" onclick="switchFootprintTab('${t.id}')">${t.label}</button>`).join('');
+  const tabPanes = tabs.map((t, i) => `<div class="fp-pane" data-fp-pane="${t.id}" style="display:${i === 0 ? 'block' : 'none'};padding-top:16px">${t.html}</div>`).join('');
+
+  body.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;border-bottom:0.5px solid var(--ff-line);padding-bottom:10px">${tabBtns}</div>
+    ${tabPanes}
+    <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;border-top:0.5px solid var(--ff-line);padding-top:12px">
+      ${website ? `<a href="${escAttr(website)}" target="_blank" rel="noopener" class="btn btn-secondary">🌐 Website öffnen</a>` : ''}
+      <button class="btn btn-secondary" onclick="closeModal('analyzeModal')">Schließen</button>
+    </div>`;
+}
+
+function switchFootprintTab(id) {
+  document.querySelectorAll('[data-fp-tab]').forEach(b => {
+    b.className = b.dataset.fpTab === id ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
+  });
+  document.querySelectorAll('[data-fp-pane]').forEach(p => {
+    p.style.display = p.dataset.fpPane === id ? 'block' : 'none';
+  });
+}
+
+// Fallback: Endpoint fehlgeschlagen -> gespeicherte Daten anzeigen
+function renderFirmaDetailsFallback(f, errMsg) {
+  const body = $('analyzeModalBody');
+  const s = f.seoScore;
   const scoreColor = typeof s === 'number' ? scoreColorFor(s) : 'var(--ff-muted)';
-  const sd = analysis ? buildSeoData({ ...analysis, url: f.website }) : (f.seoData || {});
+  const sd = f.seoData || {};
   const recs = seoRecommendations(sd);
 
-  // Positive Punkte
-  const goods = [];
-  if (sd.title || sd.siteTitle) goods.push('✅ Title-Tag vorhanden');
-  if (sd.metaDescription) goods.push('✅ Meta Description vorhanden');
-  if (sd.hasH1) goods.push('✅ H1-Überschrift vorhanden');
-  if (sd.https) goods.push('✅ HTTPS/SSL aktiv');
-  if (sd.hasMobile) goods.push('✅ Mobil-optimiert');
-  if (sd.loadTime && sd.loadTime < 2) goods.push(`✅ Schnelle Ladezeit (${sd.loadTime}s)`);
-  if (analysis?.hasSchema) goods.push('✅ Strukturierte Daten (Schema.org)');
-  if (analysis?.hasOG) goods.push('✅ Open Graph Tags');
-  if (analysis?.hasCanonical) goods.push('✅ Canonical Tag');
-  if (analysis?.hasFavicon) goods.push('✅ Favicon vorhanden');
-
-  // Score Ring
   const scoreRing = typeof s === 'number' ? `
     <div class="score-ring" style="flex-shrink:0">
       <svg viewBox="0 0 110 110" width="100" height="100">
@@ -955,26 +1236,10 @@ async function showFirmaDetails(id) {
       </div>
     </div>` : '';
 
-  // Technologies
-  const techs = analysis?.technologies || [];
-  const techHtml = techs.length ? `<div style="margin-top:10px"><strong style="font-size:12px;color:var(--ff-navy)">Erkannte Technologien</strong>
-    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">${techs.map(t => `<span class="badge badge-blue" style="font-size:10px">${escHtml(t)}</span>`).join('')}</div></div>` : '';
-
-  // Company Details from Internet
-  const cd = companyDetails || {};
-  const extraInfo = [];
-  if (cd.phones?.length) extraInfo.push({ icon: '📞', label: 'Telefonnummern', value: cd.phones.join(', ') });
-  if (cd.emails?.length) extraInfo.push({ icon: '✉', label: 'E-Mail Adressen', value: cd.emails.join(', ') });
-  if (cd.websites?.length) extraInfo.push({ icon: '🌐', label: 'Gefundene URLs', value: cd.websites.map(u => `<a href="${escAttr(u)}" target="_blank">${escHtml(u.replace(/^https?:\/\/(www\.)?/,'').slice(0,40))}</a>`).join(', ') });
-  if (cd.description) extraInfo.push({ icon: '📝', label: 'Beschreibung', value: escHtml(cd.description) });
-
-  const extraHtml = extraInfo.length ? `
-    <div style="margin-top:16px;border-top:0.5px solid var(--ff-line);padding-top:14px">
-      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">🔍 Internet-Recherche</strong>
-      ${extraInfo.map(e => `<div style="margin-bottom:6px;font-size:13px"><span style="color:var(--ff-muted)">${e.icon} ${e.label}:</span> ${e.value}</div>`).join('')}
-    </div>` : '';
-
   body.innerHTML = `
+    <div class="info-box" style="margin-bottom:14px;font-size:12px;border-left-color:var(--ff-warning,#ea580c)">
+      ⚠️ Live-Recherche nicht verfügbar (${escHtml(errMsg || 'Fehler')}). Es werden die gespeicherten Daten angezeigt.
+    </div>
     <div style="display:flex;align-items:flex-start;gap:20px;margin-bottom:16px;flex-wrap:wrap">
       ${scoreRing}
       <div style="flex:1;min-width:200px">
@@ -989,47 +1254,14 @@ async function showFirmaDetails(id) {
         <div style="font-size:11px;color:var(--ff-muted);margin-top:6px">Quelle: ${escHtml(f.source || '—')} · Gespeichert: ${fmtDate(f.savedAt)}</div>
       </div>
     </div>
-
-    ${f.website && analysis ? `
-    <div style="border-top:0.5px solid var(--ff-line);padding-top:14px;margin-top:4px">
-      <strong style="font-size:13px;color:var(--ff-navy);display:block;margin-bottom:8px">Website-Analyse</strong>
-      ${analysis.title ? `<div style="font-size:12px;color:var(--ff-muted);margin-bottom:8px">📄 Seitentitel: "${escHtml(analysis.title)}"</div>` : ''}
-
-      ${goods.length ? `<div style="margin-bottom:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--ff-success);margin-bottom:4px">Was gut ist:</div>
-        ${goods.map(g => `<div style="font-size:12px;color:var(--ff-success);padding:2px 0">${g}</div>`).join('')}
-      </div>` : ''}
-
-      ${recs.length ? `<div style="margin-bottom:10px">
-        <div style="font-size:12px;font-weight:700;color:var(--ff-danger);margin-bottom:4px">Was verbessert werden muss:</div>
-        ${recs.map(r => `<div style="font-size:12px;color:var(--ff-danger);padding:2px 0">❌ ${escHtml(r)}</div>`).join('')}
-      </div>` : '<div style="font-size:12px;color:var(--ff-success);font-weight:600;margin-bottom:8px">✅ Keine kritischen Probleme gefunden!</div>'}
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px;margin-top:8px">
-        ${analysis.wordCount != null ? `<div class="badge badge-blue" style="font-size:10px">📝 ${analysis.wordCount} Wörter</div>` : ''}
-        ${analysis.loadTime != null ? `<div class="badge badge-blue" style="font-size:10px">⚡ ${analysis.loadTime}s Ladezeit</div>` : ''}
-        ${analysis.imagesTotal != null ? `<div class="badge badge-blue" style="font-size:10px">🖼️ ${analysis.imagesTotal} Bilder (${analysis.imagesWithAlt || 0} mit Alt)</div>` : ''}
-        ${analysis.internalLinks != null ? `<div class="badge badge-blue" style="font-size:10px">🔗 ${analysis.internalLinks} interne Links</div>` : ''}
-        ${analysis.externalLinks != null ? `<div class="badge badge-blue" style="font-size:10px">🔗 ${analysis.externalLinks} externe Links</div>` : ''}
-        ${analysis.cssFiles != null ? `<div class="badge badge-blue" style="font-size:10px">🎨 ${analysis.cssFiles} CSS</div>` : ''}
-        ${analysis.jsFiles != null ? `<div class="badge badge-blue" style="font-size:10px">⚙️ ${analysis.jsFiles} JS</div>` : ''}
-      </div>
-      ${techHtml}
-    </div>` : f.website ? '<div style="padding:12px;font-size:13px;color:var(--ff-warning)">⚠️ Website-Analyse fehlgeschlagen</div>' : ''}
-
-    ${extraHtml}
-
+    ${recs.length ? `<div style="border-top:0.5px solid var(--ff-line);padding-top:14px">
+      <div style="font-size:13px;font-weight:800;color:var(--ff-danger);margin-bottom:6px">Was verbessert werden muss</div>
+      ${recs.map(r => `<div style="font-size:12.5px;color:var(--ff-danger);padding:2px 0">❌ ${escHtml(r)}</div>`).join('')}
+    </div>` : ''}
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;border-top:0.5px solid var(--ff-line);padding-top:12px">
       ${f.website ? `<a href="${escAttr(f.website)}" target="_blank" class="btn btn-secondary">🌐 Website öffnen</a>` : ''}
       <button class="btn btn-secondary" onclick="closeModal('analyzeModal')">Schließen</button>
     </div>`;
-
-  // Update stored seoData if we got fresh analysis
-  if (analysis && typeof analysis.seoScore === 'number') {
-    f.seoScore = analysis.seoScore;
-    f.seoData = buildSeoData({ ...analysis, url: f.website });
-    saveState();
-  }
 }
 
 // =====================================================================

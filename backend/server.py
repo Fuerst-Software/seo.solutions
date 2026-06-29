@@ -1439,6 +1439,397 @@ def analyze_website():
     return jsonify(result)
 
 
+# ===== COMPANY DIGITAL FOOTPRINT =====
+
+def _footprint_wko_detail(name, location):
+    """Sucht Firma auf firmen.wko.at und extrahiert Inhaber/Kontakt/Adresse/Branche."""
+    out = {"owner": None, "phones": [], "emails": [], "website": "",
+           "address": "", "category": "", "uid": None}
+    try:
+        results = _ddg_search(f'"{name}" site:firmen.wko.at')
+        detail_url = ""
+        for r in results:
+            if "firmen.wko.at" in r["url"].lower():
+                detail_url = r["url"]
+                break
+        if not detail_url:
+            return out
+        resp = requests.get(detail_url, headers=SEARCH_HEADERS, timeout=10, allow_redirects=True)
+        if resp.status_code != 200:
+            return out
+        soup = BeautifulSoup(resp.text, "html.parser")
+        text = soup.get_text(" ", strip=True)
+
+        # Telefonnummern (alle tel: Links)
+        for tel in soup.select("a[href^='tel:']"):
+            sp = tel.find("span")
+            num = (sp.get_text(strip=True) if sp else tel.get_text(strip=True)) or tel["href"].replace("tel:", "")
+            num = num.strip()
+            if num and num not in out["phones"]:
+                out["phones"].append(num)
+        # Emails (alle mailto: Links)
+        for mail in soup.select("a[href^='mailto:']"):
+            em = mail["href"].replace("mailto:", "").strip()
+            if em and em not in out["emails"]:
+                out["emails"].append(em)
+        # Website
+        web_icon = soup.find("use", attrs={"xlink:href": "#website"})
+        if web_icon:
+            link = web_icon.find_parent("a")
+            if link:
+                sp = link.find("span")
+                w = sp.get_text(strip=True) if sp else ""
+                if w and not w.startswith("http"):
+                    w = "https://" + w
+                out["website"] = w
+        # Adresse
+        street_el = soup.select_one(".address .street") or soup.select_one(".street")
+        place_el = soup.select_one(".address .place") or soup.select_one(".place")
+        street = street_el.get_text(strip=True) if street_el else ""
+        place = (place_el.get_text(strip=True).replace("\xa0", " ").strip()) if place_el else ""
+        out["address"] = f"{street}, {place}".strip(", ")
+        # Branche
+        cat_el = soup.select_one(".title-details") or soup.find("h2")
+        if cat_el:
+            out["category"] = cat_el.get_text(strip=True)[:120]
+        # Inhaber / Geschäftsführer — Label-Suche
+        m = re.search(r"(?:Inhaber|Gesch[äa]ftsf[üu]hrer|Eigent[üu]mer|Gesch[äa]ftsleitung)\s*:?\s*([A-ZÄÖÜ][\wäöüß.\-]+(?:\s+[A-ZÄÖÜ][\wäöüß.\-]+){0,3})", text)
+        if m:
+            out["owner"] = m.group(1).strip()
+        # UID
+        uid = re.search(r"(ATU\d{8})", text)
+        if uid:
+            out["uid"] = uid.group(1)
+    except Exception as e:
+        print(f"[FOOTPRINT WKO] {e}")
+    return out
+
+
+def _footprint_social(name, platform, domain):
+    """DuckDuckGo Suche nach Social-Media-Profil."""
+    try:
+        results = _ddg_search(f'"{name}" site:{domain}')
+        for r in results:
+            url = r["url"]
+            if domain in url.lower():
+                return {"platform": platform, "url": url, "found": True}
+    except Exception:
+        pass
+    return {"platform": platform, "url": None, "found": False}
+
+
+def _footprint_directory(name, display, domain):
+    """DuckDuckGo Suche in einem Online-Verzeichnis."""
+    try:
+        results = _ddg_search(f'"{name}" site:{domain}')
+        for r in results:
+            url = r["url"]
+            if domain in url.lower():
+                return {"name": display, "url": url, "found": True}
+    except Exception:
+        pass
+    return {"name": display, "url": None, "found": False}
+
+
+def _footprint_maps(name, location):
+    try:
+        results = _ddg_search(f'"{name}" "{location}" google maps')
+        for r in results:
+            if "google." in r["url"].lower() and "maps" in r["url"].lower():
+                return r["url"]
+        return results[0]["url"] if results else None
+    except Exception:
+        return None
+
+
+def _footprint_reviews(name, location):
+    try:
+        results = _ddg_search(f'"{name}" "{location}" bewertungen')
+        for r in results:
+            text = (r.get("title", "") + " " + r.get("snippet", ""))
+            m = re.search(r"(\d[\.,]\d)\s*(?:Sterne|stars|/\s*5)?.{0,40}?(\d+)\s*(?:Bewertung|Rezension|review)", text, re.I)
+            if m:
+                return f"{m.group(1)} Sterne, {m.group(2)} Bewertungen"
+        # nur Sterne
+        for r in results:
+            text = (r.get("title", "") + " " + r.get("snippet", ""))
+            m = re.search(r"(\d[\.,]\d)\s*Sterne", text, re.I)
+            if m:
+                return f"{m.group(1)} Sterne"
+        return None
+    except Exception:
+        return None
+
+
+def _footprint_website_extras(url):
+    """Zusätzliche Website-Checks: sitemap, robots, tracking, last-modified, social links."""
+    extras = {
+        "hasSitemap": False, "hasRobotsTxt": False, "lastModified": None,
+        "socialLinksOnSite": [],
+        "trackingCodes": {"googleAnalytics": False, "googleTagManager": False,
+                          "facebookPixel": False, "googleAds": False},
+    }
+    if not url:
+        return extras
+    if not url.startswith(("http://", "https://")):
+        url = "https://" + url
+    try:
+        parsed = urlparse(url)
+        base = f"{parsed.scheme}://{parsed.netloc}"
+        for path, key in (("/sitemap.xml", "hasSitemap"), ("/robots.txt", "hasRobotsTxt")):
+            try:
+                h = requests.head(base + path, headers=SEARCH_HEADERS, timeout=8, allow_redirects=True)
+                if h.status_code == 405:  # HEAD nicht erlaubt -> GET
+                    h = requests.get(base + path, headers=SEARCH_HEADERS, timeout=8, allow_redirects=True)
+                extras[key] = h.status_code < 400
+            except Exception:
+                pass
+        # Hauptseite holen für tracking + social + last-modified
+        resp = requests.get(url, headers=SEARCH_HEADERS, timeout=10, allow_redirects=True)
+        extras["lastModified"] = resp.headers.get("Last-Modified")
+        html = resp.text
+        h = html.lower()
+        extras["trackingCodes"]["facebookPixel"] = "fbq(" in h or "connect.facebook.net/en_us/fbevents.js" in h
+        extras["trackingCodes"]["googleAds"] = "adsbygoogle" in h or "googleadservices" in h
+        extras["trackingCodes"]["googleTagManager"] = "gtm.js" in h or "googletagmanager.com" in h
+        extras["trackingCodes"]["googleAnalytics"] = "gtag(" in h or "google-analytics.com" in h or re.search(r"\bga\(", h) is not None
+        soup = BeautifulSoup(html, "html.parser")
+        social_domains = ["facebook.com", "instagram.com", "linkedin.com",
+                          "youtube.com", "tiktok.com", "twitter.com", "x.com"]
+        seen = set()
+        for a in soup.find_all("a", href=True):
+            href = a["href"]
+            if href.startswith("http") and any(d in href.lower() for d in social_domains):
+                if href not in seen:
+                    seen.add(href)
+                    extras["socialLinksOnSite"].append(href)
+    except Exception as e:
+        print(f"[FOOTPRINT WEB] {e}")
+    return extras
+
+
+def _build_seo_explanations(analysis):
+    """Baut seoExplanations Array aus quick_analyze Ergebnis."""
+    title = analysis.get("title", "")
+    meta = analysis.get("metaDescription", "")
+    exp = []
+
+    def add(factor, status, score, maxScore, explanation):
+        exp.append({"factor": factor, "status": status, "score": score,
+                    "maxScore": maxScore, "explanation": explanation})
+
+    # Title
+    if not title:
+        add("Title Tag", "missing", 0, 14, "Der Title Tag ist der wichtigste SEO-Faktor — er fehlt, dadurch erscheint die Seite ohne aussagekräftigen Titel in Google.")
+    elif 30 <= len(title) <= 65:
+        add("Title Tag", "good", 14, 14, "Der Title Tag hat die ideale Länge und wird in Google vollständig angezeigt.")
+    else:
+        add("Title Tag", "bad", 7, 14, "Der Title Tag ist vorhanden, aber zu kurz oder zu lang — optimal sind 30 bis 65 Zeichen.")
+
+    # Meta Description
+    if not meta:
+        add("Meta Description", "missing", 0, 13, "Ohne Meta Description zeigt Google einen zufälligen Textausschnitt statt Ihrer Werbebotschaft.")
+    elif 120 <= len(meta) <= 160:
+        add("Meta Description", "good", 13, 13, "Die Meta Description hat die ideale Länge und wirbt aktiv für Klicks aus den Suchergebnissen.")
+    else:
+        add("Meta Description", "bad", 7, 13, "Die Meta Description ist vorhanden, sollte aber 120 bis 160 Zeichen umfassen.")
+
+    # HTTPS
+    if analysis.get("https"):
+        add("HTTPS / SSL", "good", 12, 12, "Die Seite ist verschlüsselt — das schützt Besucherdaten und ist ein Google-Ranking-Faktor.")
+    else:
+        add("HTTPS / SSL", "missing", 0, 12, "Ohne SSL-Verschlüsselung warnt der Browser vor der Seite und Google stuft sie schlechter ein.")
+
+    # Mobile
+    if analysis.get("hasMobile"):
+        add("Mobile-Optimierung", "good", 10, 10, "Die Seite ist für Smartphones optimiert — über die Hälfte aller Besucher kommt mobil.")
+    else:
+        add("Mobile-Optimierung", "missing", 0, 10, "Die Seite ist nicht für Smartphones optimiert, dadurch springen mobile Besucher schnell ab.")
+
+    # H1
+    h1 = analysis.get("h1Tags") or []
+    if len(h1) == 1:
+        add("H1 Überschrift", "good", 9, 9, "Es gibt genau eine Hauptüberschrift — so versteht Google sofort, worum es auf der Seite geht.")
+    elif len(h1) == 0:
+        add("H1 Überschrift", "missing", 0, 9, "Es fehlt eine Hauptüberschrift (H1) — Google fehlt dadurch das zentrale Thema der Seite.")
+    else:
+        add("H1 Überschrift", "bad", 5, 9, "Es gibt mehrere H1-Überschriften — für klare SEO-Signale sollte nur eine verwendet werden.")
+
+    # Content
+    words = analysis.get("wordCount", 0)
+    if words >= 300:
+        add("Textinhalt", "good", 10, 10, f"Mit {words} Wörtern bietet die Seite genug Inhalt, damit Google sie thematisch einordnen kann.")
+    else:
+        add("Textinhalt", "bad", 3, 10, f"Mit nur {words} Wörtern hat die Seite zu wenig Inhalt — Google bevorzugt ausführlichere Seiten.")
+
+    # Speed
+    lt = analysis.get("loadTime", 0)
+    if lt and lt < 3:
+        add("Ladezeit", "good", 8, 8, f"Die Seite lädt in {lt}s — schnell genug, damit Besucher nicht abspringen.")
+    else:
+        add("Ladezeit", "bad", 2, 8, f"Die Seite lädt in {lt}s — jede Sekunde über 3s kostet Besucher und Ranking.")
+
+    # Schema
+    if analysis.get("hasSchema"):
+        add("Strukturierte Daten", "good", 5, 5, "Strukturierte Daten (Schema.org) helfen Google, Rich-Ergebnisse wie Sterne anzuzeigen.")
+    else:
+        add("Strukturierte Daten", "missing", 0, 5, "Es fehlen strukturierte Daten — dadurch kann Google keine Rich-Snippets wie Bewertungssterne zeigen.")
+
+    return exp
+
+
+def _build_sales_tips(analysis, web_extras, social_media, directories, google_presence):
+    tips = []
+    lt = analysis.get("loadTime")
+    if lt and lt >= 3:
+        tips.append(f"Die Website lädt in {lt} Sekunden — jede Sekunde über 3s kostet ca. 7% der Besucher.")
+    if not analysis.get("metaDescription"):
+        tips.append("Es fehlt eine Meta Description — das bedeutet Google zeigt einen zufälligen Textausschnitt statt Ihrer Werbebotschaft.")
+    if not analysis.get("https"):
+        tips.append("Keine SSL-Verschlüsselung — der Browser warnt Besucher vor der Seite und Google stuft sie ab.")
+    if not analysis.get("hasMobile"):
+        tips.append("Die Website ist nicht für Smartphones optimiert — über die Hälfte aller Besucher kommt mobil.")
+    if not web_extras["trackingCodes"]["facebookPixel"]:
+        tips.append("Kein Facebook Pixel — Online-Werbung ist dadurch deutlich weniger effektiv.")
+    if not (web_extras["trackingCodes"]["googleAnalytics"] or web_extras["trackingCodes"]["googleTagManager"]):
+        tips.append("Kein Website-Tracking installiert — Sie sehen nicht, woher Ihre Besucher kommen oder was sie tun.")
+    if not analysis.get("hasSchema"):
+        tips.append("Keine strukturierten Daten — Google kann keine Bewertungssterne direkt in den Suchergebnissen anzeigen.")
+    if not web_extras["hasSitemap"]:
+        tips.append("Keine Sitemap gefunden — Google findet dadurch möglicherweise nicht alle Unterseiten.")
+    missing_social = [s["platform"] for s in social_media if not s["found"]]
+    if missing_social:
+        tips.append(f"Kein Profil auf {', '.join(missing_social)} gefunden — hier verschenken Sie Reichweite an die Konkurrenz.")
+    missing_dirs = [d["name"] for d in directories if not d["found"]]
+    if missing_dirs:
+        tips.append(f"Kein Eintrag in {', '.join(missing_dirs)} — diese Verzeichnisse bringen lokale Sichtbarkeit und Backlinks.")
+    if not google_presence.get("reviewsInfo"):
+        tips.append("Keine Google-Bewertungen gefunden — Bewertungen sind der wichtigste Vertrauensfaktor für Neukunden.")
+    return tips
+
+
+@app.post("/api/company/footprint")
+def company_footprint():
+    body = request.get_json() or {}
+    name = (body.get("name") or "").strip()
+    location = (body.get("location") or "").strip()
+    website = (body.get("website") or "").strip()
+    phone = (body.get("phone") or "").strip()
+    email = (body.get("email") or "").strip()
+
+    if not name:
+        return jsonify({"error": "name ist erforderlich"}), 400
+
+    cache_key = f"footprint:{name.lower()}:{location.lower()}"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        cached = dict(cached)
+        cached["cached"] = True
+        return jsonify(cached)
+
+    # Jede Aufgabe als (key, callable) — alle parallel im ThreadPoolExecutor.
+    # Kleines Delay pro DDG-Query zur Rate-Limit-Vermeidung.
+    ddg_lock = threading.Lock()
+
+    def ddg_rate_limited(fn, *args):
+        with ddg_lock:
+            time.sleep(0.3)
+        return fn(*args)
+
+    social_targets = [
+        ("Facebook", "facebook.com"), ("Instagram", "instagram.com"),
+        ("LinkedIn", "linkedin.com"), ("YouTube", "youtube.com"),
+        ("TikTok", "tiktok.com"),
+    ]
+    directory_targets = [
+        ("Herold.at", "herold.at"), ("FirmenABC.at", "firmenabc.at"),
+        ("GelbeSeiten.at", "gelbeseiten.at"), ("Yelp.at", "yelp.at"),
+    ]
+
+    tasks = {}
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tasks["wko"] = pool.submit(_footprint_wko_detail, name, location)
+        if website:
+            tasks["analysis"] = pool.submit(quick_analyze, website)
+            tasks["web_extras"] = pool.submit(_footprint_website_extras, website)
+        for plat, dom in social_targets:
+            tasks[f"social:{plat}"] = pool.submit(ddg_rate_limited, _footprint_social, name, plat, dom)
+        for disp, dom in directory_targets:
+            tasks[f"dir:{disp}"] = pool.submit(ddg_rate_limited, _footprint_directory, name, disp, dom)
+        tasks["maps"] = pool.submit(ddg_rate_limited, _footprint_maps, name, location)
+        tasks["reviews"] = pool.submit(ddg_rate_limited, _footprint_reviews, name, location)
+
+        def res(key, default=None):
+            f = tasks.get(key)
+            if not f:
+                return default
+            try:
+                return f.result(timeout=10)
+            except Exception:
+                return default
+
+        wko = res("wko") or {}
+        analysis = res("analysis") or {}
+        web_extras = res("web_extras") or {
+            "hasSitemap": False, "hasRobotsTxt": False, "lastModified": None,
+            "socialLinksOnSite": [],
+            "trackingCodes": {"googleAnalytics": False, "googleTagManager": False,
+                              "facebookPixel": False, "googleAds": False}}
+        social_media = [res(f"social:{p}", {"platform": p, "url": None, "found": False}) for p, _ in social_targets]
+        directories = [res(f"dir:{d}", {"name": d, "url": None, "found": False}) for d, _ in directory_targets]
+        maps_url = res("maps")
+        reviews_info = res("reviews")
+
+    # Firmen-Stammdaten zusammenführen (Request-Werte haben Vorrang, WKO ergänzt)
+    phones = []
+    if phone:
+        phones.append(phone)
+    for p in wko.get("phones", []):
+        if p not in phones:
+            phones.append(p)
+    emails = []
+    if email:
+        emails.append(email)
+    for e in wko.get("emails", []):
+        if e not in emails:
+            emails.append(e)
+
+    final_website = website or wko.get("website", "")
+
+    website_block = dict(analysis)
+    website_block.update({
+        "hasSitemap": web_extras["hasSitemap"],
+        "hasRobotsTxt": web_extras["hasRobotsTxt"],
+        "lastModified": web_extras["lastModified"],
+        "socialLinksOnSite": web_extras["socialLinksOnSite"],
+        "trackingCodes": web_extras["trackingCodes"],
+    })
+
+    google_presence = {"mapsUrl": maps_url, "reviewsInfo": reviews_info}
+
+    response = {
+        "company": {
+            "name": name,
+            "owner": wko.get("owner"),
+            "phones": phones,
+            "emails": emails,
+            "address": wko.get("address") or location,
+            "website": final_website,
+            "category": wko.get("category", ""),
+            "uid": wko.get("uid"),
+        },
+        "website": website_block,
+        "socialMedia": social_media,
+        "googlePresence": google_presence,
+        "directories": directories,
+        "seoExplanations": _build_seo_explanations(analysis) if website else [],
+        "salesTips": _build_sales_tips(analysis, web_extras, social_media, directories, google_presence) if website else [],
+    }
+
+    cache_set(cache_key, response)
+    return jsonify(response)
+
+
 # ===== WEBSITES =====
 
 @app.get("/api/websites")
