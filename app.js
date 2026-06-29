@@ -396,6 +396,7 @@ async function searchBusinesses() {
   const radiusKm = parseInt($('searchRadius')?.value, 10) || 10;
   const maxResults = parseInt($('searchMaxResults')?.value, 10) || 50;
   const portals = $('searchPortals')?.value || 'all';
+  const sortBy = $('searchSort')?.value || 'score_desc';
   const doAnalyze = $('searchAnalyze')?.checked ?? true;
   const doDiscover = $('searchDiscover')?.checked ?? true;
   if (!location) { showToast('Bitte Ort / Stadt eingeben.', 'error'); return; }
@@ -413,7 +414,7 @@ async function searchBusinesses() {
     const res = await fetch(API_BASE + '/api/search/businesses', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, location, radius: radiusKm * 1000, maxResults, portals, analyze: doAnalyze, discover: doDiscover }),
+      body: JSON.stringify({ query, location, radius: radiusKm * 1000, maxResults, portals, sort: sortBy, analyze: doAnalyze, discover: doDiscover }),
     });
     clearTimeout(phaseTimer);
     if (!res.ok) throw new Error('Server-Fehler (' + res.status + ')');
@@ -520,6 +521,7 @@ function renderResultCard(biz, i) {
 
       <div class="search-result-meta">
         ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
+        ${biz.distance_km != null ? `<span>📏 ${biz.distance_km < 1 ? (biz.distance_km * 1000).toFixed(0) + 'm' : biz.distance_km.toFixed(1) + ' km'} entfernt</span>` : ''}
         ${biz.phone ? `<span>📞 <a href="tel:${escAttr(biz.phone)}">${escHtml(biz.phone)}</a></span>` : ''}
         ${biz.email ? `<span>✉ <a href="mailto:${escAttr(biz.email)}">${escHtml(biz.email)}</a></span>` : ''}
         ${biz.website ? `<span>🌐 <a href="${escAttr(biz.website)}" target="_blank" rel="noopener">${escHtml(biz.website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 35))}</a></span>` : ''}

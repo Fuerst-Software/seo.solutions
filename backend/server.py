@@ -108,6 +108,23 @@ def now_iso() -> str:
     return datetime.utcnow().isoformat() + "Z"
 
 
+def haversine_km(lat1, lon1, lat2, lon2):
+    """Entfernung zwischen zwei Koordinaten in km (Haversine-Formel)."""
+    if lat1 is None or lon1 is None or lat2 is None or lon2 is None:
+        return None
+    import math
+    try:
+        lat1, lon1, lat2, lon2 = float(lat1), float(lon1), float(lat2), float(lon2)
+    except (TypeError, ValueError):
+        return None
+    r = 6371.0
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2) ** 2)
+    return round(2 * r * math.asin(math.sqrt(a)), 2)
+
+
 # ===== SERVE FRONTEND =====
 
 @app.route("/")
@@ -440,6 +457,15 @@ def _wko_parse_soup(s, query, location, seen_wko, results):
         cat_el = article.select_one(".title-details")
         category = cat_el.get_text(strip=True) if cat_el else ""
 
+        # Branche-Filter: wenn query angegeben, muss Suchbegriff in Kategorie
+        # oder Name vorkommen, sonst Firma überspringen.
+        q = (query or "").strip().lower()
+        if q:
+            haystack = (category + " " + name).lower()
+            q_terms = [t for t in q.split() if len(t) > 2] or [q]
+            if not any(t in haystack for t in q_terms):
+                continue
+
         street_el = article.select_one(".address .street")
         place_el = article.select_one(".address .place")
         street = street_el.get_text(strip=True) if street_el else ""
@@ -471,6 +497,7 @@ def _wko_parse_soup(s, query, location, seen_wko, results):
             detail_link = "https://firmen.wko.at" + title_a["href"]
 
         results.append({
+            "lat": None, "lon": None,
             "name": name, "address": address, "phone": phone,
             "website": website, "email": email,
             "category": category or query or "Unternehmen",
@@ -581,7 +608,7 @@ def search_wko(query, location, fetch_details=False):
         except Exception as e:
             print(f"[WKO] Pagination error: {e}")
 
-        for bz_url in bezirk_links[:8]:
+        for bz_url in bezirk_links[:15]:
             try:
                 bz_resp = requests.get(bz_url, headers=SEARCH_HEADERS, timeout=12, allow_redirects=True)
                 if bz_resp.status_code == 200:
@@ -680,8 +707,8 @@ def search_osm(query, location, radius):
 
         query_lower = (query or "").lower().strip()
 
-        # Radius immer begrenzen um Overpass-Timeouts zu vermeiden (max 15km).
-        safe_radius = min(int(radius or 5000), 15000)
+        # Radius vom User nutzen (bis 50km).
+        safe_radius = min(int(radius or 5000), 50000)
         matched_tags = []
         # OSM-Tag-Wert -> deutsche Kategorie (für Kategorie-Zuordnung)
         OSM_VAL_TO_DE = {
@@ -717,21 +744,26 @@ def search_osm(query, location, radius):
                 lines.append(f'node["name"~"{query_lower}",i]["shop"](around:{safe_radius},{lat},{lon});')
                 lines.append(f'way["name"~"{query_lower}",i]["craft"](around:{safe_radius},{lat},{lon});')
         else:
-            # OHNE Branche: alle Firmen, getrennte Queries um Timeouts zu vermeiden
+            # OHNE Branche: ALLE Firmen (craft+shop+office+amenity)
             lines = [
                 f'node["craft"]["name"](around:{safe_radius},{lat},{lon});',
+                f'way["craft"]["name"](around:{safe_radius},{lat},{lon});',
                 f'node["shop"]["name"](around:{safe_radius},{lat},{lon});',
+                f'way["shop"]["name"](around:{safe_radius},{lat},{lon});',
                 f'node["office"]["name"](around:{safe_radius},{lat},{lon});',
+                f'way["office"]["name"](around:{safe_radius},{lat},{lon});',
+                f'node["amenity"]["name"](around:{safe_radius},{lat},{lon});',
+                f'way["amenity"]["name"](around:{safe_radius},{lat},{lon});',
             ]
 
         overpass_body = "\n".join(lines)
-        overpass_query = f"[out:json][timeout:25];\n(\n{overpass_body}\n);\nout center 300;"
+        overpass_query = f"[out:json][timeout:45];\n(\n{overpass_body}\n);\nout center 1000;"
         print(f"[OSM] Tags: {matched_tags or 'alle Firmen'}, {len(lines)} filters, radius={safe_radius}")
         ov_resp = requests.post(
             "https://overpass-api.de/api/interpreter",
             data={"data": overpass_query},
             headers=OSM_HEADERS,
-            timeout=35,
+            timeout=45,
         )
         ov_data = ov_resp.json()
         elements = ov_data.get("elements", [])
@@ -780,7 +812,16 @@ def search_osm(query, location, radius):
                 tags.get("addr:postcode", ""), tags.get("addr:city", ""),
             ])).strip()
 
+            # Koordinaten: node hat lat/lon direkt, way hat sie in "center"
+            el_lat = el.get("lat")
+            el_lon = el.get("lon")
+            if el_lat is None or el_lon is None:
+                center = el.get("center") or {}
+                el_lat = center.get("lat")
+                el_lon = center.get("lon")
+
             results.append({
+                "lat": el_lat, "lon": el_lon,
                 "name": name, "address": addr or location,
                 "phone": tags.get("phone") or tags.get("contact:phone") or tags.get("mobile") or tags.get("contact:mobile", ""),
                 "website": tags.get("website") or tags.get("contact:website") or tags.get("url", ""),
@@ -1105,8 +1146,15 @@ def search_businesses():
     radius = body.get("radius", 5000)
     analyze = body.get("analyze", True)
     discover = body.get("discover", True)
-    max_results = body.get("maxResults", 50)
     portals = body.get("portals", "all")
+    sort = (body.get("sort") or "score_desc").strip()
+
+    # maxResults: beliebige Zahl 1-1000
+    try:
+        max_results = int(body.get("maxResults", 50))
+    except (TypeError, ValueError):
+        max_results = 50
+    max_results = max(1, min(max_results, 1000))
 
     if not location:
         return jsonify({"error": "Ort / Stadt ist erforderlich"}), 400
@@ -1198,17 +1246,60 @@ def search_businesses():
                 biz["seoScore"] = 0
                 biz["siteOnline"] = False
 
-    # Sortierung: Beste SEO-Scores zuerst, dann mit Website, dann Rest
-    all_results.sort(key=lambda b: (
-        not b.get("hasWebsite"),
-        not b.get("siteOnline"),
-        -(b.get("seoScore") or 0),
-        b["name"],
-    ))
+    # Entfernung zum Suchort berechnen (Haversine), wenn Koordinaten vorhanden
+    search_lat = search_lon = None
+    try:
+        geo_resp = requests.get(
+            "https://nominatim.openstreetmap.org/search",
+            params={"q": location, "format": "json", "limit": 1},
+            headers=OSM_HEADERS,
+            timeout=10,
+        )
+        geo_data = geo_resp.json()
+        if geo_data:
+            search_lat = float(geo_data[0]["lat"])
+            search_lon = float(geo_data[0]["lon"])
+    except Exception as e:
+        print(f"[SEARCH] Geocode error: {e}")
+
+    for biz in all_results:
+        biz["distance_km"] = haversine_km(search_lat, search_lon, biz.get("lat"), biz.get("lon"))
+
+    # Sortierung gemäß sort-Parameter
+    def _dist_key(b):
+        d = b.get("distance_km")
+        return d if d is not None else float("inf")
+
+    if sort == "score_asc":
+        # schlechteste Scores zuerst, nur mit (online) Website
+        all_results.sort(key=lambda b: (
+            not b.get("hasWebsite"),
+            not b.get("siteOnline"),
+            (b.get("seoScore") or 0),
+            b["name"],
+        ))
+    elif sort == "no_website":
+        # Firmen ohne Website zuerst
+        all_results.sort(key=lambda b: (
+            bool(b.get("hasWebsite")),
+            -(b.get("seoScore") or 0),
+            b["name"],
+        ))
+    elif sort == "distance":
+        # nächste Firmen zuerst
+        all_results.sort(key=lambda b: (_dist_key(b), b["name"]))
+    else:
+        # Default "score_desc": beste SEO-Scores zuerst (nur mit Website)
+        all_results.sort(key=lambda b: (
+            not b.get("hasWebsite"),
+            not b.get("siteOnline"),
+            -(b.get("seoScore") or 0),
+            b["name"],
+        ))
 
     print(f"[SEARCH] Total: {len(all_results)} from: {', '.join(sources_used) or 'keine Quellen'}")
 
-    limit = min(max_results, len(all_results)) if max_results < 500 else len(all_results)
+    limit = min(max_results, len(all_results))
     return jsonify({
         "businesses": all_results[:limit],
         "count": len(all_results),
