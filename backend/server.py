@@ -1717,15 +1717,61 @@ def _footprint_impressum(website):
     out["phones"] = list(all_phones)[:8]
     out["emails"] = list(all_emails)[:8]
 
-    # Wenn kein Owner gefunden: auch die Startseite prüfen
-    if not out["owner"]:
+    # IMMER auch Startseite durchsuchen (hat oft Kontaktdaten im Footer)
+    try:
+        resp = requests.get(base, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            text = soup.get_text(" ", strip=True)
+            # GF von Startseite
+            if not out["owner"]:
+                for pat in [
+                    r"(?:Gesch[äa]ftsf[üu]hrer|Inhaber|Eigent[üu]mer|CEO)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß.\-]+){1,3})",
+                ]:
+                    m = re.search(pat, text)
+                    if m and len(m.group(1).split()) >= 2:
+                        out["owner"] = m.group(1).strip()
+                        break
+            # Telefone von Startseite
+            for tel in soup.select("a[href^='tel:']"):
+                num = tel["href"].replace("tel:", "").strip()
+                if num and len(num) > 5:
+                    all_phones.add(num)
+            for tel_match in re.findall(r"(?:Tel|Telefon|Phone|Fon|Mobil|Handy)\s*\.?\s*:?\s*([\+\d\s/\-\(\)]{8,20})", text):
+                cleaned = tel_match.strip()
+                if cleaned and len(cleaned) > 6:
+                    all_phones.add(cleaned)
+            # Emails von Startseite
+            for mail in soup.select("a[href^='mailto:']"):
+                em = mail["href"].replace("mailto:", "").split("?")[0].strip().lower()
+                if em and "@" in em:
+                    all_emails.add(em)
+            for em_match in re.findall(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}", text):
+                all_emails.add(em_match.lower())
+    except Exception:
+        pass
+
+    out["phones"] = list(all_phones)[:8]
+    out["emails"] = list(all_emails)[:8]
+
+    # DuckDuckGo als letzte Quelle für Telefon + GF
+    if not out["phones"] or not out["owner"]:
         try:
-            resp = requests.get(base, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
-            if resp.status_code == 200:
-                text = BeautifulSoup(resp.text, "html.parser").get_text(" ", strip=True)
-                m = re.search(r"(?:Gesch[äa]ftsf[üu]hrer|Inhaber)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+(?:\s+[A-ZÄÖÜ][a-zäöüß.\-]+){1,3})", text)
-                if m and len(m.group(1).split()) >= 2:
-                    out["owner"] = m.group(1).strip()
+            domain_name = parsed.netloc.replace("www.", "")
+            ddg_results = _ddg_search(f'"{domain_name}" telefon OR phone OR kontakt')
+            for r in ddg_results[:5]:
+                snippet = r.get("snippet", "") + " " + r.get("title", "")
+                # Telefon aus Snippets
+                if not out["phones"]:
+                    for tel_match in re.findall(r"(\+43[\d\s/\-]{6,16}|0\d{3,4}[\s/\-]?\d{3,8})", snippet):
+                        cleaned = tel_match.strip()
+                        if cleaned and cleaned not in out["phones"]:
+                            out["phones"].append(cleaned)
+                # GF aus Snippets
+                if not out["owner"]:
+                    m = re.search(r"(?:Inhaber|Gesch[äa]ftsf[üu]hrer|CEO)\s*:?\s*([A-ZÄÖÜ][a-zäöüß]+\s+[A-ZÄÖÜ][a-zäöüß]+)", snippet)
+                    if m:
+                        out["owner"] = m.group(1).strip()
         except Exception:
             pass
 
