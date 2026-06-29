@@ -1541,9 +1541,37 @@ function initEventListeners() {
 }
 
 // =====================================================================
+// DARK MODE
+// =====================================================================
+function toggleDarkMode() {
+  const isDark = document.body.classList.toggle('dark');
+  localStorage.setItem('seo_darkmode', isDark ? '1' : '0');
+  updateThemeToggleIcon();
+}
+
+function loadDarkMode() {
+  const saved = localStorage.getItem('seo_darkmode');
+  if (saved === '1' || (saved === null && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.body.classList.add('dark');
+  }
+  updateThemeToggleIcon();
+}
+
+function updateThemeToggleIcon() {
+  const btn = $('themeToggle');
+  if (!btn) return;
+  const isDark = document.body.classList.contains('dark');
+  const sun = btn.querySelector('.icon-sun');
+  const moon = btn.querySelector('.icon-moon');
+  if (sun) sun.style.display = isDark ? 'none' : 'block';
+  if (moon) moon.style.display = isDark ? 'block' : 'none';
+}
+
+// =====================================================================
 // INIT
 // =====================================================================
 function init() {
+  loadDarkMode();
   initEventListeners();
   loadSettings();
   renderDashboard();
