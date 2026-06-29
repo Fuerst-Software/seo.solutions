@@ -488,51 +488,40 @@ function renderResultCard(biz, i) {
     biz.hasSchema ? '✅ Schema' : '',
   ].filter(Boolean) : [];
 
-  // Score bar visual
-  const scoreBar = usable ? `<div style="margin:8px 0 6px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-      <span style="font-size:11px;font-weight:600;color:var(--ff-text-soft)">SEO Score</span>
-      <span style="font-size:13px;font-weight:800;color:${scoreColor}">${seo}/100</span>
+  // Score bar — compact
+  const scoreBar = usable ? `<div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+    <div style="flex:1;height:4px;background:var(--border,#e2e5ec);border-radius:2px;overflow:hidden">
+      <div style="height:100%;width:${seo}%;background:${scoreColor};border-radius:2px"></div>
     </div>
-    <div style="height:6px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:3px;overflow:hidden">
-      <div style="height:100%;width:${seo}%;background:${scoreColor};border-radius:3px;transition:width 0.6s ease"></div>
-    </div>
+    <span style="font-size:12px;font-weight:700;color:${scoreColor};min-width:42px;text-align:right">${seo}/100</span>
   </div>` : '';
 
-  return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${usable}" data-score="${seo}" style="${!hasWeb ? 'opacity:.45' : ''}">
+  return `<div class="search-result-item" id="search-result-${i}" data-haswebsite="${usable}" data-score="${seo}" style="${!hasWeb ? 'opacity:.5' : ''}">
     <div class="search-result-favicon" style="background:${scoreColor}">
       ${usable ? seo : escHtml((biz.name || '?')[0].toUpperCase())}
     </div>
     <div class="search-result-body">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <div class="search-result-name">${escHtml(biz.name)}</div>
-        ${biz.category ? `<span class="search-result-category">${escHtml(biz.category)}</span>` : ''}
-        ${biz.source ? `<span class="badge badge-blue">${escHtml(biz.source)}</span>` : ''}
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span class="search-result-name">${escHtml(biz.name)}</span>
+        ${biz.category ? `<span class="badge" style="font-size:10px">${escHtml(biz.category)}</span>` : ''}
+        ${biz.distance_km != null ? `<span style="font-size:11px;color:var(--muted)">${biz.distance_km < 1 ? (biz.distance_km * 1000).toFixed(0) + 'm' : biz.distance_km.toFixed(1) + ' km'}</span>` : ''}
       </div>
-
-      ${usable ? scoreBar
-        : hasWeb
-        ? '<div style="margin:6px 0;font-size:12px;color:#ff9f0a;font-weight:600">⚠️ Website nicht erreichbar</div>'
-        : '<div style="margin:6px 0;padding:6px 10px;background:var(--ff-danger-bg,rgba(239,68,68,0.08));border-radius:8px;font-size:12px;color:var(--ff-danger);font-weight:600">🚫 Keine Website — potentieller Neukunde!</div>'}
-
-      ${usable ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:4px">${pills.map(p => `<span class="badge" style="font-size:10px;background:var(--ff-bg-soft,#f0f0f5);color:var(--ff-text-soft,#444);border:.5px solid var(--ff-line,rgba(0,0,0,.06))">${p}</span>`).join('')}</div>` : ''}
-      ${biz.siteTitle && online ? `<div style="font-size:11px;color:var(--ff-muted);margin-bottom:3px">📄 ${escHtml(biz.siteTitle)}</div>` : ''}
-      ${biz.websiteDiscovered ? '<span class="badge badge-blue" style="font-size:9px">🔍 Website via Recherche gefunden</span>' : ''}
-
+      ${scoreBar}
+      ${!hasWeb ? '<div style="font-size:11px;color:var(--danger);margin:3px 0">Keine Website</div>' : ''}
+      ${hasWeb && !online ? '<div style="font-size:11px;color:var(--warning);margin:3px 0">Website nicht erreichbar</div>' : ''}
+      ${usable ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin:3px 0">${pills.map(p => `<span class="badge" style="font-size:10px">${p}</span>`).join('')}</div>` : ''}
       <div class="search-result-meta">
         ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
-        ${biz.distance_km != null ? `<span>📏 ${biz.distance_km < 1 ? (biz.distance_km * 1000).toFixed(0) + 'm' : biz.distance_km.toFixed(1) + ' km'} entfernt</span>` : ''}
         ${biz.phone ? `<span>📞 <a href="tel:${escAttr(biz.phone)}">${escHtml(biz.phone)}</a></span>` : ''}
-        ${biz.email ? `<span>✉ <a href="mailto:${escAttr(biz.email)}">${escHtml(biz.email)}</a></span>` : ''}
-        ${biz.website ? `<span>🌐 <a href="${escAttr(biz.website)}" target="_blank" rel="noopener">${escHtml(biz.website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 35))}</a></span>` : ''}
+        ${biz.website ? `<span>🌐 <a href="${escAttr(biz.website)}" target="_blank">${escHtml(biz.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a></span>` : ''}
       </div>
     </div>
     <div class="search-result-actions">
-      <button class="btn btn-sm ${saved ? 'btn-success' : 'btn-primary'}" id="save-btn-${i}"
+      <button class="btn btn-sm ${saved ? 'btn-success' : ''}" id="save-btn-${i}"
         onclick="saveFirma(${i})" ${saved ? 'disabled' : ''}>
-        ${saved ? '✓ Gespeichert' : '★ Speichern'}
+        ${saved ? '✓' : '★ Speichern'}
       </button>
-      ${biz.website ? `<button class="btn btn-sm btn-secondary" onclick='analyzeWebsite(${jsArg(biz.website)})'>Details</button>` : ''}
+      ${biz.website ? `<button class="btn btn-sm" onclick='analyzeWebsite(${jsArg(biz.website)})'>Details</button>` : ''}
     </div>
   </div>`;
 }
@@ -813,59 +802,44 @@ function onFirmenSort(v) { firmenSort = v; renderFirmenPage(); }
 function renderFirmaCard(f) {
   const s = f.seoScore;
   const hasWeb = !!f.website;
-  const online = f.seoData?.online !== false && hasWeb;
   const sd = f.seoData || {};
-  const scoreColor = hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--ff-muted)';
+  const scoreColor = hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint, #9ca3af)';
 
-  const pill = (ok, on, off) => ok
-    ? `<span class="badge badge-success" style="font-size:9px">✓ ${on}</span>`
-    : `<span class="badge badge-error" style="font-size:9px">✗ ${off}</span>`;
+  // Score bar — compact
+  const scoreBar = hasWeb && typeof s === 'number' ? `
+    <div style="display:flex;align-items:center;gap:8px;margin:6px 0 4px">
+      <div style="flex:1;height:4px;background:var(--border,#e2e5ec);border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${s}%;background:${scoreColor};border-radius:2px"></div>
+      </div>
+      <span style="font-size:12px;font-weight:700;color:${scoreColor};min-width:42px;text-align:right">${s}/100</span>
+    </div>` : '';
 
-  // SEO Score Bar (wie in Suchergebnissen)
-  const scoreBar = hasWeb && typeof s === 'number' ? `<div style="margin:8px 0 6px">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
-      <span style="font-size:11px;font-weight:600;color:var(--ff-text-soft)">SEO Score</span>
-      <span style="font-size:14px;font-weight:900;color:${scoreColor}">${s}/100</span>
-    </div>
-    <div style="height:6px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:3px;overflow:hidden">
-      <div style="height:100%;width:${s}%;background:${scoreColor};border-radius:3px;transition:width 0.6s ease"></div>
-    </div>
-  </div>` : '';
+  // Contact line
+  const contacts = [
+    f.address ? `📍 ${escHtml(f.address)}` : '',
+    f.phone ? `📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a>` : '',
+    f.email ? `✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a>` : '',
+    f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
+  ].filter(Boolean);
 
-  return `<div class="website-item" style="align-items:flex-start;padding:20px;margin-bottom:12px">
-    <div style="width:56px;height:56px;border-radius:14px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '18px' : '22px'};font-weight:950;flex-shrink:0">
+  return `<div class="website-item">
+    <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
       ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
     </div>
     <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:4px">
-        <strong style="font-size:16px;color:var(--ff-navy)">${escHtml(f.name)}</strong>
-        ${f.category ? `<span class="search-result-category">${escHtml(f.category)}</span>` : ''}
-        ${f.source ? `<span class="badge badge-blue" style="font-size:9px">${escHtml(f.source)}</span>` : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
+        ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
       </div>
-
       ${scoreBar}
-
-      ${hasWeb ? `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px">
-        ${pill(sd.title, 'Title', 'Kein Title')}
-        ${pill(sd.metaDescription, 'Meta', 'Keine Meta')}
-        ${pill(sd.hasH1, 'H1', 'Kein H1')}
-        ${pill(sd.https, 'HTTPS', 'Kein HTTPS')}
-        ${pill(sd.hasMobile, 'Mobil', 'Nicht mobil')}
-        ${sd.loadTime != null ? `<span class="badge badge-blue" style="font-size:9px">⚡ ${sd.loadTime}s</span>` : ''}
-        ${sd.wordCount != null ? `<span class="badge badge-blue" style="font-size:9px">${sd.wordCount} W</span>` : ''}
-      </div>` : '<div style="margin:6px 0;padding:6px 10px;background:var(--ff-danger-bg,rgba(239,68,68,0.08));border-radius:8px;font-size:12px;color:var(--ff-danger);font-weight:600">🚫 Keine Website vorhanden</div>'}
-
-      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:4px 14px;font-size:12.5px;margin-bottom:6px">
-        ${f.address ? `<div>📍 ${escHtml(f.address)}</div>` : ''}
-        ${f.phone ? `<div>📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a></div>` : ''}
-        ${f.email ? `<div>✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></div>` : ''}
-        ${f.website ? `<div>🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a></div>` : ''}
+      ${!hasWeb ? '<div style="font-size:11px;color:var(--danger);margin:4px 0">Keine Website</div>' : ''}
+      <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">
+        ${contacts.join('')}
       </div>
-
-      <div style="font-size:11px;color:var(--ff-muted)">Gespeichert: ${fmtDate(f.savedAt)} · Quelle: ${escHtml(f.source || '—')}</div>
+      <div style="font-size:11px;color:var(--faint);margin-top:4px">${fmtDate(f.savedAt)} · ${escHtml(f.source || '')}</div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-      <button class="btn btn-sm btn-primary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
+    <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+      <button class="btn btn-sm btn-secondary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
       <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
     </div>
   </div>`;
@@ -1047,10 +1021,10 @@ function renderFirmaFootprint(f, fp) {
     const scoreBar = `<div style="margin:4px 0 16px">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
         <span style="font-size:12px;font-weight:600;color:var(--ff-text-soft)">SEO Score</span>
-        <span style="font-size:15px;font-weight:900;color:${wc}">${ws}/100</span>
+        <span style="font-size:14px;font-weight:900;color:${wc}">${ws}/100</span>
       </div>
-      <div style="height:10px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:5px;overflow:hidden">
-        <div style="height:100%;width:${ws}%;background:${wc};border-radius:5px;transition:width 0.6s ease"></div>
+      <div style="height:4px;background:var(--ff-bg-soft,rgba(0,0,0,0.06));border-radius:2px;overflow:hidden">
+        <div style="height:100%;width:${ws}%;background:${wc};border-radius:2px;transition:width 0.6s ease"></div>
       </div>
     </div>`;
 
