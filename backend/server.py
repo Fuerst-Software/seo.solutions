@@ -1172,6 +1172,14 @@ def search_businesses():
         max_results = 50
     max_results = max(1, min(max_results, 1000))
 
+    # maxScore: nur Firmen mit SEO Score <= diesem Wert anzeigen
+    max_score = body.get("maxScore")
+    if max_score is not None:
+        try:
+            max_score = int(max_score)
+        except (TypeError, ValueError):
+            max_score = None
+
     if not location:
         return jsonify({"error": "Ort / Stadt ist erforderlich"}), 400
 
@@ -1312,6 +1320,12 @@ def search_businesses():
             -(b.get("seoScore") or 0),
             b["name"],
         ))
+
+    # maxScore Filter: nur Firmen mit Score <= maxScore
+    if max_score is not None:
+        before = len(all_results)
+        all_results = [b for b in all_results if (b.get("seoScore") or 0) <= max_score or not b.get("hasWebsite")]
+        print(f"[SEARCH] maxScore={max_score} filter: {before} → {len(all_results)}")
 
     print(f"[SEARCH] Total: {len(all_results)} from: {', '.join(sources_used) or 'keine Quellen'}")
 
