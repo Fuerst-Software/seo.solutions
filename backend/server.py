@@ -1647,10 +1647,36 @@ def _footprint_impressum(website):
     except Exception:
         return out
 
-    # Durchsuche ALLE relevanten Seiten (nicht nur die erste die matcht)
-    paths = ["/impressum", "/imprint", "/about", "/about-us", "/kontakt",
-             "/contact", "/ueber-uns", "/team", "/unternehmen", "/company",
-             "/datenschutz", "/agb", "/legal"]
+    # Statische Pfade + CMS-Varianten
+    static_paths = [
+        "/impressum", "/imprint", "/about", "/about-us", "/kontakt",
+        "/contact", "/ueber-uns", "/team", "/unternehmen", "/company",
+        "/datenschutz", "/agb", "/legal",
+        # CMS-Pfade (Joomla, WordPress, etc.)
+        "/index.php/impressum", "/index.php/kontakt", "/index.php/about",
+        "/index.php/datenschutz", "/index.php/ueber-uns",
+    ]
+
+    # ZUERST: Startseite laden und echte Impressum/Kontakt-Links finden
+    found_links = set()
+    try:
+        hp_resp = requests.get(base, headers=SEARCH_HEADERS, timeout=6, allow_redirects=True)
+        if hp_resp.status_code == 200:
+            hp_soup = BeautifulSoup(hp_resp.text, "html.parser")
+            for a in hp_soup.find_all("a", href=True):
+                href = a.get("href", "").lower()
+                text = a.get_text(strip=True).lower()
+                if any(kw in href or kw in text for kw in ["impressum", "imprint", "kontakt", "contact", "about", "über uns", "ueber-uns", "datenschutz", "team"]):
+                    full_href = a.get("href", "")
+                    if full_href.startswith("/"):
+                        found_links.add(full_href)
+                    elif full_href.startswith(base):
+                        found_links.add(full_href.replace(base, ""))
+    except Exception:
+        pass
+
+    # Gefundene Links haben Priorität, dann statische Pfade
+    paths = list(found_links) + [p for p in static_paths if p not in found_links]
     all_phones = set()
     all_emails = set()
 
