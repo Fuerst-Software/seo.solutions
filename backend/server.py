@@ -2606,6 +2606,48 @@ def delete_firma(firma_id):
     return jsonify({"ok": True})
 
 
+# ===== SERVER-SIDE STATE (settings / stats / activities / searchHistory) =====
+
+_state_lock = threading.Lock()
+
+def _read_appstate() -> dict:
+    db = read_db()
+    return db.get("appstate", {
+        "settings": {}, "stats": {}, "activities": [], "searchHistory": []
+    })
+
+def _write_appstate(s: dict):
+    with _state_lock:
+        db = read_db()
+        db["appstate"] = s
+        write_db(db)
+
+@app.get("/api/state")
+def get_state():
+    return jsonify(_read_appstate())
+
+@app.put("/api/state")
+def put_state():
+    patch = request.get_json() or {}
+    s = _read_appstate()
+    # Merge top-level keys (settings, stats, activities, searchHistory)
+    for k, v in patch.items():
+        s[k] = v
+    _write_appstate(s)
+    return jsonify(s)
+
+@app.post("/api/state/activity")
+def add_activity():
+    a = request.get_json() or {}
+    a["time"] = now_iso()
+    s = _read_appstate()
+    acts = s.get("activities", [])
+    acts.insert(0, a)
+    s["activities"] = acts[:100]  # max 100
+    _write_appstate(s)
+    return jsonify(a), 201
+
+
 # ===== ACTIVITIES =====
 
 @app.get("/api/activities")

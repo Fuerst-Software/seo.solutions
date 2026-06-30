@@ -12,72 +12,146 @@ const API_BASE = (
   window.location.hostname === '10.0.0.230'
 ) ? '' : 'http://10.0.0.230:3001';
 
-// ===== STATE =====
+// ===== STATE (alles Server-seitig, kein localStorage) =====
 const state = {
-  websites: load('seo_websites', []),
-  activities: load('seo_activities', []),
-  settings: load('seo_settings', {}),
-  stats: load('seo_stats', {}),
-  firmen: [],           // wird vom Server geladen, kein localStorage
-  searchHistory: load('seo_searchHistory', []),
+  websites: [],
+  activities: [],
+  settings: {},
+  stats: {},
+  firmen: [],
+  searchHistory: [],
 };
 
+// Legacy-Helper (nur noch für Migration alter Daten)
 function load(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key)) ?? fallback; }
   catch { return fallback; }
 }
 
-function saveState() {
+// saveState ist nur noch ein No-Op (Server übernimmt alles)
+function saveState() { /* no-op: alles wird direkt per API gespeichert */ }
+
+// =====================================================================
+// SERVER STATE API — einheitlicher Sync für alle Daten
+// =====================================================================
+
+let _stateSaveDebounce = null;
+
+async function apiStateLoad() {
   try {
-    localStorage.setItem('seo_websites', JSON.stringify(state.websites));
-    localStorage.setItem('seo_activities', JSON.stringify(state.activities));
-    localStorage.setItem('seo_settings', JSON.stringify(state.settings));
-    localStorage.setItem('seo_stats', JSON.stringify(state.stats));
-    // seo_firmen wird NICHT mehr lokal gespeichert — läuft über Server-API
-    localStorage.setItem('seo_searchHistory', JSON.stringify(state.searchHistory));
+    const res = await fetch(API_BASE + '/api/state');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const s = await res.json();
+    state.settings     = s.settings     || {};
+    state.stats        = s.stats        || {};
+    state.activities   = s.activities   || [];
+    state.searchHistory = s.searchHistory || [];
+    // Einmalige Migration: alte localStorage-Daten
+    _migrateLocalStorage();
   } catch (e) {
-    console.warn('saveState fehlgeschlagen', e);
+    console.warn('[State] Laden fehlgeschlagen:', e);
+    // Fallback auf localStorage wenn Server nicht erreichbar
+    state.settings     = load('seo_settings', {});
+    state.stats        = load('seo_stats', {});
+    state.activities   = load('seo_activities', []);
+    state.searchHistory = load('seo_searchHistory', []);
   }
 }
 
-// ===== FIRMEN SERVER-API =====
+function _migrateLocalStorage() {
+  const keys = ['seo_settings','seo_stats','seo_activities','seo_searchHistory','seo_websites'];
+  const hasAny = keys.some(k => localStorage.getItem(k));
+  if (!hasAny) return;
+  const patch = {};
+  const s = load('seo_settings', null); if (s && Object.keys(s).length) patch.settings = { ...s, ...state.settings };
+  const st = load('seo_stats', null);   if (st && Object.keys(st).length) patch.stats = { ...st, ...state.stats };
+  const ac = load('seo_activities', null); if (ac?.length) {
+    const merged = [...(ac), ...(state.activities)].slice(0, 100);
+    patch.activities = merged;
+    state.activities = merged;
+  }
+  const sh = load('seo_searchHistory', null); if (sh?.length) {
+    const merged = [...sh, ...state.searchHistory].slice(0, 30);
+    patch.searchHistory = merged;
+    state.searchHistory = merged;
+  }
+  if (Object.keys(patch).length) {
+    fetch(API_BASE + '/api/state', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch)
+    }).catch(() => {});
+  }
+  keys.forEach(k => localStorage.removeItem(k));
+}
+
+// Debounced Server-Save für settings/stats/searchHistory
+function _scheduleSave() {
+  clearTimeout(_stateSaveDebounce);
+  _stateSaveDebounce = setTimeout(async () => {
+    try {
+      await fetch(API_BASE + '/api/state', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          settings: state.settings,
+          stats: state.stats,
+          searchHistory: state.searchHistory,
+        }),
+      });
+    } catch (e) { console.warn('[State] Save fehlgeschlagen:', e); }
+  }, 800);
+}
+
+async function addActivity(a) {
+  const entry = { ...a, time: new Date().toISOString() };
+  state.activities.unshift(entry);
+  if (state.activities.length > 100) state.activities = state.activities.slice(0, 100);
+  // Feuern-und-Vergessen zum Server
+  fetch(API_BASE + '/api/state/activity', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(a),
+  }).catch(() => {});
+}
+
+// =====================================================================
+// FIRMEN SERVER-API
+// =====================================================================
+
 async function apiFirmenLoad() {
   try {
     const res = await fetch(API_BASE + '/api/firmen');
     if (!res.ok) throw new Error('HTTP ' + res.status);
     state.firmen = await res.json();
-    updateFirmenBadge();
-    updateKontakteBadge();
-  } catch (e) {
-    console.warn('[Firmen] Laden fehlgeschlagen:', e);
-    // Fallback: alte localStorage-Daten migrieren
+    // Einmalige Migration aus altem localStorage
     const old = localStorage.getItem('seo_firmen');
     if (old) {
       try {
         const parsed = JSON.parse(old);
         if (parsed.length) {
-          state.firmen = parsed;
-          // Einmalig zum Server hochladen
           for (const f of parsed) {
             fetch(API_BASE + '/api/firmen', {
               method: 'POST', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify(f)
             }).catch(() => {});
           }
+          // Ergänze lokale Liste sofort
+          const existingIds = new Set(state.firmen.map(x => x.id));
+          parsed.forEach(f => { if (!existingIds.has(f.id)) state.firmen.push(f); });
           localStorage.removeItem('seo_firmen');
-          showToast('Firmen wurden zum Server migriert.', 'success');
+          showToast('Lokale Firmen wurden zum Server migriert.', 'success');
         }
       } catch {}
     }
-    updateFirmenBadge();
-    updateKontakteBadge();
+  } catch (e) {
+    console.warn('[Firmen] Laden fehlgeschlagen:', e);
+    state.firmen = load('seo_firmen', []);
   }
+  updateFirmenBadge();
+  updateKontakteBadge();
 }
 
 async function apiFirmaCreate(firma) {
   const res = await fetch(API_BASE + '/api/firmen', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(firma),
   });
   if (res.status === 409) throw new Error('already_exists');
@@ -87,8 +161,7 @@ async function apiFirmaCreate(firma) {
 
 async function apiFirmaUpdate(id, patch) {
   const res = await fetch(API_BASE + '/api/firmen/' + id, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   });
   if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -100,7 +173,6 @@ async function apiFirmaDelete(id) {
   if (!res.ok) throw new Error('HTTP ' + res.status);
 }
 
-// Debounce-Map für Notiz-Saves (verhindert zu viele API-Calls beim Tippen)
 const _noteDebounce = {};
 function debounceNote(id, patch) {
   clearTimeout(_noteDebounce[id]);
@@ -267,12 +339,8 @@ function openModal(id) { $(id)?.classList.add('open'); }
 function closeModal(id) { $(id)?.classList.remove('open'); }
 
 // =====================================================================
-// ACTIVITIES
+// ACTIVITIES — definiert oben im API-Block, hier nur Platzhalter-Kommentar
 // =====================================================================
-function addActivity(a) {
-  state.activities.unshift({ ...a, time: new Date().toISOString() });
-  if (state.activities.length > 100) state.activities = state.activities.slice(0, 100);
-}
 
 // =====================================================================
 // DASHBOARD
@@ -540,7 +608,7 @@ async function searchBusinesses() {
     state.searchHistory.unshift({ location, query, portals, count: businesses.length, time: new Date().toISOString() });
     if (state.searchHistory.length > 30) state.searchHistory = state.searchHistory.slice(0, 30);
     addActivity({ title: `Firmensuche: ${location}${query ? ' · ' + query : ''}`, meta: `${businesses.length} Firmen, ${withSite} mit Website`, status: 'success', color: '#0b5cff' });
-    saveState();
+    _scheduleSave();
     showToast(`${businesses.length} Firmen gefunden!`, 'success');
   } catch (e) {
     clearTimeout(phaseTimer);
@@ -688,7 +756,7 @@ async function analyzeWebsite(url) {
 
     state.stats.analyzed = (state.stats.analyzed || 0) + 1;
     addActivity({ title: `Website analysiert: ${data.title || url}`, meta: `Score: ${s}/100`, status: s >= 50 ? 'success' : 'error', color: scoreColor });
-    saveState();
+    _scheduleSave();
     showToast(`Analyse abgeschlossen! Score: ${s}/100`, 'success');
   } catch (e) {
     $('analyzeModalBody').innerHTML = `<div class="seo-check-item fail" style="margin:8px"><span>Fehler: ${escHtml(e.message)}</span></div>`;
@@ -724,7 +792,6 @@ async function saveFirmaFromAnalysis() {
     await apiFirmaCreate(firma);
     state.firmen.push(firma);
     addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: 'aus Analyse', status: 'success', color: '#087a43' });
-    saveState();
     updateFirmenBadge();
     showToast(`"${firma.name}" gespeichert!`, 'success');
   } catch (e) {
@@ -780,7 +847,6 @@ async function saveFirma(index) {
     if (btn) { btn.textContent = '✓ Gespeichert'; btn.className = 'btn btn-sm btn-success'; }
     updateFirmenBadge();
     addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: firma.category, status: 'success', color: '#087a43' });
-    saveState();
     showToast(`"${firma.name}" gespeichert!`, 'success');
   } catch (e) {
     if (e.message === 'already_exists') {
@@ -811,7 +877,6 @@ function addBusinessAsWebsite(biz) {
   };
   state.websites.push(w);
   addActivity({ title: `Website "${w.name}" hinzugefügt`, meta: w.url, status: 'success', color: '#087a43' });
-  saveState();
   showToast(`"${w.name}" als Website hinzugefügt!`, 'success');
 }
 
@@ -917,10 +982,24 @@ function renderFirmaCard(f) {
   ].filter(Boolean);
 
   const called = !!f.calledAt;
+  const noInterest = !!f.noInterest;
+
   const calledBtnStyle = called
     ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)'
     : '';
   const calledLabel = called ? `✓ Angerufen` : '📞 Anrufen';
+
+  const noInterestBtnStyle = noInterest
+    ? 'background:#dc2626;color:#fff;border-color:#dc2626'
+    : '';
+  const noInterestLabel = noInterest ? '✗ Kein Interesse' : '✗ Kein Interesse';
+
+  const statusBadges = [
+    called ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>` : '',
+    noInterest ? `<span class="badge" style="font-size:10px;background:#dc2626;color:#fff">✗ Kein Interesse</span>` : '',
+  ].filter(Boolean).join('');
+
+  const dotColor = noInterest ? '#dc2626' : (called ? 'var(--ff-success,#16a34a)' : null);
 
   const noteSection = called ? `
     <div style="margin-top:8px;background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px">
@@ -942,16 +1021,16 @@ function renderFirmaCard(f) {
         oninput="saveFirmaGeneralNote('${escAttr(f.id)}', this.value)">${escHtml(f.notes || '')}</textarea>
     </div>`;
 
-  return `<div class="website-item" id="firma-card-${escAttr(f.id)}">
-    <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0;position:relative">
+  return `<div class="website-item" id="firma-card-${escAttr(f.id)}" style="${noInterest ? 'opacity:0.6' : ''}">
+    <div style="width:44px;height:44px;border-radius:10px;background:${noInterest ? '#9ca3af' : scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0;position:relative">
       ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
-      ${called ? `<span style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:var(--ff-success,#16a34a);border-radius:50%;border:2px solid var(--card,#fff)"></span>` : ''}
+      ${dotColor ? `<span style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:${dotColor};border-radius:50%;border:2px solid var(--card,#fff)"></span>` : ''}
     </div>
     <div style="flex:1;min-width:0">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
         ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
-        ${called ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>` : ''}
+        ${statusBadges}
       </div>
       ${scoreBar}
       ${!hasWeb ? '<div style="font-size:11px;color:var(--danger);margin:4px 0">Keine Website</div>' : ''}
@@ -964,6 +1043,7 @@ function renderFirmaCard(f) {
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
       <button class="btn btn-sm" style="${calledBtnStyle}" onclick="toggleFirmaAngerufen('${escAttr(f.id)}')">${calledLabel}</button>
+      <button class="btn btn-sm" style="${noInterestBtnStyle};${noInterest ? '' : 'opacity:0.7'}" onclick="toggleKeinInteresse('${escAttr(f.id)}')">${noInterestLabel}</button>
       <button class="btn btn-sm btn-secondary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
       <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
     </div>
@@ -999,6 +1079,21 @@ async function toggleFirmaAngerufen(id) {
   }
 }
 
+async function toggleKeinInteresse(id) {
+  const f = state.firmen.find(x => x.id === id);
+  if (!f) return;
+  const patch = { noInterest: !f.noInterest, noInterestAt: !f.noInterest ? new Date().toISOString() : null };
+  Object.assign(f, patch);
+  renderFirmenPage();
+  updateKontakteBadge();
+  try {
+    await apiFirmaUpdate(id, patch);
+    showToast(f.noInterest ? `${f.name} — Kein Interesse markiert.` : 'Markierung entfernt.', f.noInterest ? 'error' : 'info');
+  } catch (e) {
+    showToast('Sync-Fehler: ' + e.message, 'error');
+  }
+}
+
 function saveFirmaNote(id, note) {
   const f = state.firmen.find(x => x.id === id);
   if (!f) return;
@@ -1014,7 +1109,7 @@ function saveFirmaGeneralNote(id, note) {
 }
 
 function updateKontakteBadge() {
-  const count = state.firmen.filter(f => f.calledAt).length;
+  const count = state.firmen.filter(f => f.calledAt || f.noInterest).length;
   const badge = $('navBadgeKontakte');
   if (!badge) return;
   badge.textContent = count;
@@ -1025,36 +1120,45 @@ function renderKontaktePage() {
   const container = $('kontakteList');
   if (!container) return;
 
-  const called = state.firmen.filter(f => f.calledAt)
+  const called = state.firmen.filter(f => f.calledAt && !f.noInterest)
     .sort((a, b) => new Date(b.calledAt) - new Date(a.calledAt));
+  const noInterest = state.firmen.filter(f => f.noInterest)
+    .sort((a, b) => new Date(b.noInterestAt || 0) - new Date(a.noInterestAt || 0));
 
-  if (!called.length) {
+  if (!called.length && !noInterest.length) {
     container.innerHTML = `<div class="empty-state" style="padding:32px">
       <svg viewBox="0 0 24 24" style="width:48px;height:48px"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
       <h4>Noch keine Firmen kontaktiert</h4>
-      <p>Markiere Firmen in "Meine Firmen" als angerufen — sie erscheinen dann hier.</p>
+      <p>Markiere Firmen in "Meine Firmen" als angerufen oder als kein Interesse.</p>
       <button class="btn btn-primary" onclick="navigateTo('firmen')">Meine Firmen</button>
     </div>`;
     return;
   }
 
   const withNote = called.filter(f => f.calledNote?.trim()).length;
-  const stats = `<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px">
+  const statsHtml = `<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px">
     <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-success)">${called.length}</span><span style="font-size:12px;color:var(--ff-muted)">Kontaktiert</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:#dc2626">${noInterest.length}</span><span style="font-size:12px;color:var(--ff-muted)">Kein Interesse</span></div>
     <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-blue)">${withNote}</span><span style="font-size:12px;color:var(--ff-muted)">mit Notiz</span></div>
   </div>`;
 
-  const cards = called.map(f => {
+  function kontaktCard(f, isNoInterest) {
     const s = f.seoScore;
     const hasWeb = !!f.website;
-    const scoreColor = hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)';
+    const scoreColor = isNoInterest ? '#9ca3af' : (hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)');
     const contacts = [
-      f.phone ? `📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a>` : '',
+      f.phone ? `📞 <a href="tel:${escAttr(f.phone)}" style="font-weight:700;color:var(--ff-blue)">${escHtml(f.phone)}</a>` : '',
       f.email ? `✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a>` : '',
       f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
     ].filter(Boolean);
+    const statusLabel = isNoInterest
+      ? `<span class="badge" style="font-size:10px;background:#dc2626;color:#fff">✗ Kein Interesse</span>`
+      : `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>`;
+    const dateLabel = isNoInterest
+      ? `Kein Interesse seit ${fmtDate(f.noInterestAt)}`
+      : `Angerufen am ${fmtDate(f.calledAt)}`;
 
-    return `<div class="website-item">
+    return `<div class="website-item" style="${isNoInterest ? 'opacity:0.65' : ''}">
       <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
         ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
       </div>
@@ -1062,20 +1166,32 @@ function renderKontaktePage() {
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
           ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
-          <span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>
+          ${statusLabel}
         </div>
-        <div style="font-size:11px;color:var(--ff-muted);margin:4px 0">Angerufen am ${fmtDate(f.calledAt)}</div>
+        <div style="font-size:11px;color:var(--ff-muted);margin:4px 0">${dateLabel}</div>
         ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📝 ${escHtml(f.notes)}</div>` : ''}
-        ${f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📞 ${escHtml(f.calledNote)}</div>` : `<div style="font-size:11px;color:var(--faint)">Keine Gesprächsnotiz</div>`}
+        ${!isNoInterest && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📞 ${escHtml(f.calledNote)}</div>` : ''}
         <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
         <button class="btn btn-sm btn-secondary" onclick="navigateTo('firmen');setTimeout(()=>showFirmaDetails('${escAttr(f.id)}'),200)">Details</button>
       </div>
     </div>`;
-  }).join('');
+  }
 
-  container.innerHTML = stats + cards;
+  const calledSection = called.length ? `
+    <div style="font-size:11px;font-weight:700;color:var(--ff-muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px">
+      ✓ Kontaktiert (${called.length})
+    </div>
+    ${called.map(f => kontaktCard(f, false)).join('')}` : '';
+
+  const noInterestSection = noInterest.length ? `
+    <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px">
+      ✗ Kein Interesse (${noInterest.length})
+    </div>
+    ${noInterest.map(f => kontaktCard(f, true)).join('')}` : '';
+
+  container.innerHTML = statsHtml + calledSection + noInterestSection;
 }
 
 // =====================================================================
@@ -1144,7 +1260,6 @@ async function showFirmaDetails(id) {
       title: footprint.website.title,
       metaDescription: footprint.website.metaDescription,
     });
-    saveState();
   }
 }
 
@@ -1618,7 +1733,7 @@ function exportFirmen() {
   const csv = '﻿' + header + '\n' + rows.join('\n');
   downloadBlob(csv, `seo-solutions-firmen-${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv;charset=utf-8;');
   state.stats.exported = (state.stats.exported || 0) + 1;
-  saveState();
+  _scheduleSave();
   showToast(`${state.firmen.length} Firmen als CSV exportiert!`, 'success');
 }
 
@@ -1627,7 +1742,7 @@ function exportFirmenJSON() {
   const json = JSON.stringify(state.firmen, null, 2);
   downloadBlob(json, `seo-solutions-firmen-${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
   state.stats.exported = (state.stats.exported || 0) + 1;
-  saveState();
+  _scheduleSave();
   showToast(`${state.firmen.length} Firmen als JSON exportiert!`, 'success');
 }
 
@@ -1638,7 +1753,7 @@ function saveApiKey() {
   const key = $('anthropicKey')?.value.trim();
   if (!key) { showToast('Bitte API Key eingeben.', 'error'); return; }
   state.settings.anthropicKey = key;
-  saveState();
+  _scheduleSave();
   showToast('API Key gespeichert!', 'success');
   updateAiEngineStatus();
 }
@@ -1682,7 +1797,7 @@ function saveSettings() {
   if ($('seoTracking')) state.settings.seoTracking = $('seoTracking').classList.contains('on');
   if ($('saveVersions')) state.settings.saveVersions = $('saveVersions').classList.contains('on');
   if ($('defaultLang')) state.settings.defaultLang = $('defaultLang').value;
-  saveState();
+  _scheduleSave();
   showToast('Einstellungen gespeichert!', 'success');
   updateAiEngineStatus();
 }
@@ -1774,12 +1889,13 @@ function updateThemeToggleIcon() {
 async function init() {
   loadDarkMode();
   initEventListeners();
-  loadSettings();
-  renderDashboard();
+  renderDashboard(); // sofort rendern (noch leer)
+  // Alles parallel vom Server laden
+  await Promise.all([apiStateLoad(), apiFirmenLoad()]);
+  loadSettings();    // Settings-Felder befüllen nachdem State geladen
+  renderDashboard(); // mit echten Daten neu rendern
   updateFirmenBadge();
-  // Firmen vom Server laden (geräteübergreifend)
-  await apiFirmenLoad();
-  renderDashboard(); // Badge-Zahlen aktualisieren
+  updateKontakteBadge();
 }
 
 if (document.readyState === 'loading') {
