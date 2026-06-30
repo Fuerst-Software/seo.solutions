@@ -213,7 +213,7 @@ function genApiKey() { return 'seo_' + Array.from({ length: 32 }, () => Math.ran
 
 function updateRangeTrack(el) {
   const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
-  el.style.background = `linear-gradient(to right, #2563eb 0%, #2563eb ${pct}%, var(--range-track, #334155) ${pct}%, var(--range-track, #334155) 100%)`;
+  el.style.setProperty('--fill', pct + '%');
 }
 
 function initRangeTracks() {
