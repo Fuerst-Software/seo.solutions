@@ -150,6 +150,7 @@ const PAGE_TITLES = {
   dashboard: 'Dashboard',
   search: 'Firmensuche',
   firmen: 'Meine Firmen',
+  kontakte: 'Kontaktierte Firmen',
   settings: 'Einstellungen',
 };
 
@@ -168,6 +169,7 @@ function renderPage(page) {
   if (page === 'dashboard') renderDashboard();
   if (page === 'search') renderSearchPage();
   if (page === 'firmen') renderFirmenPage();
+  if (page === 'kontakte') renderKontaktePage();
 }
 
 // =====================================================================
@@ -213,6 +215,7 @@ function renderDashboard() {
   setText('statExported', state.stats.exported || 0);
 
   updateFirmenBadge();
+  updateKontakteBadge();
   renderActivities();
   renderDashboardInsights();
   updateQuickstart();
@@ -827,14 +830,34 @@ function renderFirmaCard(f) {
     f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
   ].filter(Boolean);
 
-  return `<div class="website-item">
-    <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
+  const called = !!f.calledAt;
+  const calledBtnStyle = called
+    ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)'
+    : '';
+  const calledLabel = called ? `✓ Angerufen` : '📞 Anrufen';
+
+  const noteSection = called ? `
+    <div style="margin-top:8px;background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px">
+      <div style="font-size:11px;font-weight:600;color:var(--ff-muted);margin-bottom:4px">
+        Angerufen am ${fmtDate(f.calledAt)}
+        ${f.calledNote ? '' : '<span style="color:var(--ff-muted)"> · Noch keine Notiz</span>'}
+      </div>
+      <textarea id="note-${escAttr(f.id)}" rows="2"
+        placeholder="Notiz zum Verkaufsgespräch..."
+        style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:var(--card);color:var(--ink);resize:vertical;box-sizing:border-box"
+        oninput="saveFirmaNote('${escAttr(f.id)}', this.value)">${escHtml(f.calledNote || '')}</textarea>
+    </div>` : '';
+
+  return `<div class="website-item" id="firma-card-${escAttr(f.id)}">
+    <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0;position:relative">
       ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
+      ${called ? `<span style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:var(--ff-success,#16a34a);border-radius:50%;border:2px solid var(--card,#fff)"></span>` : ''}
     </div>
     <div style="flex:1;min-width:0">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
         ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
+        ${called ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>` : ''}
       </div>
       ${scoreBar}
       ${!hasWeb ? '<div style="font-size:11px;color:var(--danger);margin:4px 0">Keine Website</div>' : ''}
@@ -842,8 +865,10 @@ function renderFirmaCard(f) {
         ${contacts.join('')}
       </div>
       <div style="font-size:11px;color:var(--faint);margin-top:4px">${fmtDate(f.savedAt)} · ${escHtml(f.source || '')}</div>
+      ${noteSection}
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+      <button class="btn btn-sm" style="${calledBtnStyle}" onclick="toggleFirmaAngerufen('${escAttr(f.id)}')">${calledLabel}</button>
       <button class="btn btn-sm btn-secondary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
       <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
     </div>
@@ -856,6 +881,94 @@ function deleteFirma(id) {
   renderFirmenPage();
   updateFirmenBadge();
   showToast('Firma entfernt.', 'success');
+}
+
+function toggleFirmaAngerufen(id) {
+  const f = state.firmen.find(x => x.id === id);
+  if (!f) return;
+  if (f.calledAt) {
+    // Rückgängig machen
+    f.calledAt = null;
+    f.calledNote = '';
+    showToast('Anruf-Markierung entfernt.', 'info');
+  } else {
+    f.calledAt = new Date().toISOString();
+    showToast(`${f.name} als angerufen markiert.`, 'success');
+  }
+  saveState();
+  renderFirmenPage();
+  updateKontakteBadge();
+}
+
+function saveFirmaNote(id, note) {
+  const f = state.firmen.find(x => x.id === id);
+  if (!f) return;
+  f.calledNote = note;
+  saveState();
+}
+
+function updateKontakteBadge() {
+  const count = state.firmen.filter(f => f.calledAt).length;
+  const badge = $('navBadgeKontakte');
+  if (!badge) return;
+  badge.textContent = count;
+  badge.style.display = count > 0 ? '' : 'none';
+}
+
+function renderKontaktePage() {
+  const container = $('kontakteList');
+  if (!container) return;
+
+  const called = state.firmen.filter(f => f.calledAt)
+    .sort((a, b) => new Date(b.calledAt) - new Date(a.calledAt));
+
+  if (!called.length) {
+    container.innerHTML = `<div class="empty-state" style="padding:32px">
+      <svg viewBox="0 0 24 24" style="width:48px;height:48px"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
+      <h4>Noch keine Firmen kontaktiert</h4>
+      <p>Markiere Firmen in "Meine Firmen" als angerufen — sie erscheinen dann hier.</p>
+      <button class="btn btn-primary" onclick="navigateTo('firmen')">Meine Firmen</button>
+    </div>`;
+    return;
+  }
+
+  const withNote = called.filter(f => f.calledNote?.trim()).length;
+  const stats = `<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-success)">${called.length}</span><span style="font-size:12px;color:var(--ff-muted)">Kontaktiert</span></div>
+    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-blue)">${withNote}</span><span style="font-size:12px;color:var(--ff-muted)">mit Notiz</span></div>
+  </div>`;
+
+  const cards = called.map(f => {
+    const s = f.seoScore;
+    const hasWeb = !!f.website;
+    const scoreColor = hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)';
+    const contacts = [
+      f.phone ? `📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a>` : '',
+      f.email ? `✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a>` : '',
+      f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
+    ].filter(Boolean);
+
+    return `<div class="website-item">
+      <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
+        ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
+          ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
+          <span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>
+        </div>
+        <div style="font-size:11px;color:var(--ff-muted);margin:4px 0">Angerufen am ${fmtDate(f.calledAt)}</div>
+        ${f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:6px 0;white-space:pre-wrap">${escHtml(f.calledNote)}</div>` : `<div style="font-size:11px;color:var(--faint)">Keine Notiz hinterlegt</div>`}
+        <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button class="btn btn-sm btn-secondary" onclick="navigateTo('firmen');setTimeout(()=>showFirmaDetails('${escAttr(f.id)}'),200)">Details</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = stats + cards;
 }
 
 // =====================================================================
