@@ -966,7 +966,7 @@ function renderFirmenPage() {
   }
   list.sort((a, b) => {
     if (firmenSort === 'name') return (a.name || '').localeCompare(b.name || '', 'de');
-    if (firmenSort === 'score') return (b.seoScore ?? -1) - (a.seoScore ?? -1);
+    if (firmenSort === 'score') return (a.seoScore ?? 999) - (b.seoScore ?? 999);
     return new Date(b.savedAt || 0) - new Date(a.savedAt || 0); // date
   });
 
@@ -984,7 +984,7 @@ function renderFirmenPage() {
         oninput="onFirmenSearch(this.value)" style="flex:1;min-width:200px;margin:0" />
       <select class="form-input" id="firmenSortSelect" onchange="onFirmenSort(this.value)" style="max-width:200px;margin:0">
         ${opt('date', 'Datum ↓ (neueste)')}
-        ${opt('score', 'SEO Score ↓')}
+        ${opt('score', 'SEO Score ↑ (schlechteste zuerst)')}
         ${opt('name', 'Name A–Z')}
       </select>
       <button class="btn btn-secondary" onclick="exportFirmen()">CSV</button>
