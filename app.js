@@ -1088,7 +1088,7 @@ function renderFirmaCard(f) {
       ${generalNoteSection}
       ${noteSection}
     </div>
-    <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+    <div class="card-actions">
       <button class="btn btn-sm${called && !interesse && !noInterest ? '' : ''}"
         style="${called && !interesse && !noInterest ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)' : ''}"
         onclick="setFirmaStatus('${escAttr(f.id)}','called')">
@@ -1258,7 +1258,7 @@ function renderKontaktePage() {
         ${type === 'called' && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap;display:flex;gap:5px;align-items:flex-start">${IC.phone} ${escHtml(f.calledNote)}</div>` : ''}
         <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
       </div>
-      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+      <div class="card-actions">
         <button class="btn btn-sm btn-secondary" onclick="navigateTo('firmen');setTimeout(()=>showFirmaDetails('${escAttr(f.id)}'),200)">Details</button>
       </div>
     </div>`;
@@ -1908,8 +1908,8 @@ function initEventListeners() {
   // Mobile Sidebar
   $('menuToggle')?.addEventListener('click', () => $('sidebar')?.classList.toggle('open'));
 
-  // Nav Links
-  document.querySelectorAll('.nav-item').forEach(item => {
+  // Nav Links (sidebar + mobile tab bar)
+  document.querySelectorAll('.nav-item, .mob-tab').forEach(item => {
     item.addEventListener('click', e => {
       e.preventDefault();
       navigateTo(item.dataset.page);
