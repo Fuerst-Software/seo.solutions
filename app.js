@@ -422,7 +422,10 @@ async function searchBusinesses() {
     const data = await res.json();
     if (data.error) throw new Error(data.error);
 
-    const businesses = data.businesses || data.results || [];
+    const savedNames = new Set(state.firmen.map(f => (f.name || '').toLowerCase().trim()));
+    const allBusinesses = data.businesses || data.results || [];
+    const businesses = allBusinesses.filter(b => !savedNames.has((b.name || '').toLowerCase().trim()));
+    const hiddenSaved = allBusinesses.length - businesses.length;
     if (!businesses.length) {
       results.innerHTML = `<div class="card"><div class="empty-state" style="padding:28px">
         <svg viewBox="0 0 24 24" style="width:48px;height:48px"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5z"/></svg>
@@ -455,7 +458,8 @@ async function searchBusinesses() {
       <span style="color:var(--ff-danger)">${noSite} ohne</span> ·
       <span style="color:var(--ff-blue)">${good} SEO 70+</span>
       ${discovered ? ` · <span style="color:var(--ff-blue)">${discovered} entdeckt</span>` : ''}
-      ${(data.count && data.showing && data.showing < data.count) ? ` · <span style="color:var(--ff-muted)">${data.count} total, ${data.showing} angezeigt</span>` : ''}`;
+      ${(data.count && data.showing && data.showing < data.count) ? ` · <span style="color:var(--ff-muted)">${data.count} total, ${data.showing} angezeigt</span>` : ''}
+      ${hiddenSaved ? ` · <span style="color:var(--ff-muted)">${hiddenSaved} bereits gespeichert (ausgeblendet)</span>` : ''}`;
     filterResults('all');
 
     // Stats + History

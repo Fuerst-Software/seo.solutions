@@ -1185,6 +1185,7 @@ def search_businesses():
 
     all_results = []
     seen_names = set()
+    seen_phones = set()
 
     # Portal-Auswahl
     sources_used = []
@@ -1216,8 +1217,13 @@ def search_businesses():
             count = 0
             for biz in found:
                 name_key = biz["name"].lower().strip()
-                if name_key not in seen_names:
+                phone_key = re.sub(r'\s+', '', biz.get("phone", "") or "")
+                # Dedup: gleicher Name ODER gleiche Telefonnummer (nicht-leere)
+                is_dup = name_key in seen_names or (phone_key and phone_key in seen_phones)
+                if not is_dup:
                     seen_names.add(name_key)
+                    if phone_key:
+                        seen_phones.add(phone_key)
                     all_results.append(biz)
                     count += 1
             if count > 0:
@@ -1295,34 +1301,32 @@ def search_businesses():
         return d if d is not None else float("inf")
 
     if sort == "score_asc":
-        # schlechteste Scores zuerst, nur mit (online) Website
-        all_results.sort(key=lambda b: (
-            not b.get("hasWebsite"),
-            not b.get("siteOnline"),
-            (b.get("seoScore") or 0),
-            b["name"],
-        ))
+        # NUR Firmen mit Website UND erreichbar — schlechteste Scores zuerst
+        all_results = [b for b in all_results if b.get("hasWebsite") and b.get("siteOnline")]
+        all_results.sort(key=lambda b: ((b.get("seoScore") or 0), b["name"]))
     elif sort == "no_website":
-        # Firmen ohne Website zuerst
-        all_results.sort(key=lambda b: (
-            bool(b.get("hasWebsite")),
-            -(b.get("seoScore") or 0),
-            b["name"],
-        ))
+        # NUR Firmen ohne Website
+        all_results = [b for b in all_results if not b.get("hasWebsite")]
+        all_results.sort(key=lambda b: b["name"])
+    elif sort == "site_offline":
+        # NUR Firmen mit Website aber nicht erreichbar
+        all_results = [b for b in all_results if b.get("hasWebsite") and not b.get("siteOnline")]
+        all_results.sort(key=lambda b: b["name"])
     elif sort == "distance":
-        # nächste Firmen zuerst
+        # Alle Firmen — nächste zuerst, dann immer weiter weg
         all_results.sort(key=lambda b: (_dist_key(b), b["name"]))
     else:
-        # Default "score_desc": beste SEO-Scores zuerst (nur mit Website)
-        all_results.sort(key=lambda b: (
-            not b.get("hasWebsite"),
-            not b.get("siteOnline"),
-            -(b.get("seoScore") or 0),
-            b["name"],
-        ))
+        # Default "score_desc": NUR online Firmen nach bestem Score, dann Firmen ohne Website
+        online = [b for b in all_results if b.get("hasWebsite") and b.get("siteOnline")]
+        no_site = [b for b in all_results if not b.get("hasWebsite")]
+        offline = [b for b in all_results if b.get("hasWebsite") and not b.get("siteOnline")]
+        online.sort(key=lambda b: (-(b.get("seoScore") or 0), b["name"]))
+        no_site.sort(key=lambda b: b["name"])
+        offline.sort(key=lambda b: b["name"])
+        all_results = online + no_site + offline
 
-    # maxScore Filter: nur Firmen mit Score <= maxScore
-    if max_score is not None:
+    # maxScore Filter: nur Firmen mit Score <= maxScore (nur sinnvoll bei score_desc/distance)
+    if max_score is not None and sort not in ("no_website", "site_offline"):
         before = len(all_results)
         all_results = [b for b in all_results if (b.get("seoScore") or 0) <= max_score or not b.get("hasWebsite")]
         print(f"[SEARCH] maxScore={max_score} filter: {before} → {len(all_results)}")
