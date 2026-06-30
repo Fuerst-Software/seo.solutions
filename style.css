@@ -282,18 +282,14 @@ body.dark .macos-wallpaper::before {
   margin-bottom: 14px;
 }
 .logo-mark {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border-radius: 8px;
-  background: linear-gradient(140deg, #3b82f6, #6366f1);
-  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 800;
-  font-size: 16px;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.35);
+  box-shadow: 0 2px 10px rgba(37, 99, 235, 0.40);
 }
 .logo-text { display: flex; flex-direction: column; line-height: 1.15; }
 .logo-text strong { font-size: 14px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; }

@@ -181,6 +181,24 @@ function debounceNote(id, patch) {
   }, 600);
 }
 
+// =====================================================================
+// SVG ICON LIBRARY — keine Emojis
+// =====================================================================
+const IC = {
+  pin:    `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>`,
+  phone:  `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02L6.6 10.8z"/></svg>`,
+  mail:   `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>`,
+  globe:  `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>`,
+  note:   `<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>`,
+  star:   `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`,
+  x:      `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`,
+  check:  `<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`,
+  lock:   `<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>`,
+  mobile: `<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M17 1.01L7 1c-1.1 0-2 .9-2 2v18c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V3c0-1.1-.9-1.99-2-1.99zM17 19H7V5h10v14z"/></svg>`,
+  bolt:   `<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M7 2v11h3v9l7-12h-4l4-8z"/></svg>`,
+  schema: `<svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor" style="vertical-align:middle;flex-shrink:0"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>`,
+};
+
 // Firmen-Seite UI state
 let firmenSort = 'date';     // 'name' | 'score' | 'date'
 let firmenSearch = '';
@@ -626,11 +644,15 @@ function renderResultCard(biz, i) {
   const scoreColor = !hasWeb ? '#8895b0' : !online ? 'var(--ff-danger)' : scoreColorFor(seo);
 
   const pills = usable ? [
-    biz.https ? '🔒 HTTPS' : '⚠️ HTTP',
-    biz.mobile ? '📱 Mobil' : '❌ Nicht mobil',
-    biz.loadTime ? `⚡ ${biz.loadTime}s` : '',
-    biz.wordCount ? `📝 ${biz.wordCount} W` : '',
-    biz.hasSchema ? '✅ Schema' : '',
+    biz.https
+      ? `<span style="color:#16a34a">${IC.lock} HTTPS</span>`
+      : `<span style="color:#dc2626">${IC.lock} HTTP</span>`,
+    biz.mobile
+      ? `<span style="color:#2563eb">${IC.mobile} Mobil</span>`
+      : `<span style="color:#9ca3af">${IC.mobile} Nicht mobil</span>`,
+    biz.loadTime ? `${IC.bolt} ${biz.loadTime}s` : '',
+    biz.wordCount ? `${IC.note} ${biz.wordCount} W` : '',
+    biz.hasSchema ? `<span style="color:#16a34a">${IC.schema} Schema</span>` : '',
   ].filter(Boolean) : [];
 
   // Score bar — compact
@@ -656,15 +678,15 @@ function renderResultCard(biz, i) {
       ${hasWeb && !online ? '<div style="font-size:11px;color:var(--warning);margin:3px 0">Website nicht erreichbar</div>' : ''}
       ${usable ? `<div style="display:flex;gap:3px;flex-wrap:wrap;margin:3px 0">${pills.map(p => `<span class="badge" style="font-size:10px">${p}</span>`).join('')}</div>` : ''}
       <div class="search-result-meta">
-        ${biz.address ? `<span>📍 ${escHtml(biz.address)}</span>` : ''}
-        ${biz.phone ? `<span>📞 <a href="tel:${escAttr(biz.phone)}">${escHtml(biz.phone)}</a></span>` : ''}
-        ${biz.website ? `<span>🌐 <a href="${escAttr(biz.website)}" target="_blank">${escHtml(biz.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a></span>` : ''}
+        ${biz.address ? `<span>${IC.pin} ${escHtml(biz.address)}</span>` : ''}
+        ${biz.phone ? `<span>${IC.phone} <a href="tel:${escAttr(biz.phone)}">${escHtml(biz.phone)}</a></span>` : ''}
+        ${biz.website ? `<span>${IC.globe} <a href="${escAttr(biz.website)}" target="_blank">${escHtml(biz.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a></span>` : ''}
       </div>
     </div>
     <div class="search-result-actions">
       <button class="btn btn-sm ${saved ? 'btn-success' : ''}" id="save-btn-${i}"
         onclick="saveFirma(${i})" ${saved ? 'disabled' : ''}>
-        ${saved ? '✓' : '★ Speichern'}
+        ${saved ? `${IC.check} Gespeichert` : 'Speichern'}
       </button>
       ${biz.website ? `<button class="btn btn-sm" onclick='analyzeWebsite(${jsArg(biz.website)})'>Details</button>` : ''}
     </div>
@@ -898,13 +920,29 @@ function renderFirmenPage() {
     return;
   }
 
+  // Nur Firmen ohne Kontakt-Status (kontaktierte sind in "Kontaktierte Firmen")
+  const uncontacted = state.firmen.filter(f => !f.calledAt && !f.interesse && !f.noInterest);
+  const contactedCount = state.firmen.length - uncontacted.length;
+
+  if (!uncontacted.length && !state.firmen.length) {
+    container.innerHTML = `<div class="empty-state">
+      <svg viewBox="0 0 24 24"><path d="M12 7V3H2v18h20V7H12zM6 19H4v-2h2v2zm0-4H4v-2h2v2zm0-4H4V9h2v2zm0-4H4V5h2v2zm4 12H8v-2h2v2zm0-4H8v-2h2v2zm0-4H8V9h2v2zm0-4H8V5h2v2zm10 12h-8v-2h2v-2h-2v-2h2v-2h-2V9h8v10z"/></svg>
+      <h4>Noch keine Firmen gespeichert</h4>
+      <p>Suche nach Unternehmen und speichere interessante Firmen hier.</p>
+      <button class="btn btn-primary" onclick="navigateTo('search')">Firmensuche starten</button>
+    </div>`;
+    return;
+  }
+
   // Zusammenfassung
-  const total = state.firmen.length;
-  const withWeb = state.firmen.filter(f => f.website).length;
-  const avg = firmenAvgScore();
+  const total = uncontacted.length;
+  const withWeb = uncontacted.filter(f => f.website).length;
+  const avg = uncontacted.length
+    ? Math.round(uncontacted.filter(f => f.seoScore != null).reduce((s, f) => s + f.seoScore, 0) / (uncontacted.filter(f => f.seoScore != null).length || 1))
+    : null;
 
   // Filtern + Sortieren
-  let list = state.firmen.slice();
+  let list = uncontacted.slice();
   if (firmenSearch) {
     const q = firmenSearch.toLowerCase();
     list = list.filter(f =>
@@ -922,10 +960,11 @@ function renderFirmenPage() {
   const opt = (val, label) => `<option value="${val}" ${firmenSort === val ? 'selected' : ''}>${label}</option>`;
 
   const toolbar = `
-    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px">
-      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-navy)">${total}</span><span style="font-size:12px;color:var(--ff-muted)">Firmen</span></div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;align-items:center">
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-navy)">${total}</span><span style="font-size:12px;color:var(--ff-muted)">Offen</span></div>
       <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-success)">${withWeb}</span><span style="font-size:12px;color:var(--ff-muted)">mit Website</span></div>
-      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:${scoreColorFor(avg)}">${avg ?? '—'}</span><span style="font-size:12px;color:var(--ff-muted)">Ø SEO Score</span></div>
+      <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:${scoreColorFor(avg)}">${avg ?? '—'}</span><span style="font-size:12px;color:var(--ff-muted)">Ø SEO</span></div>
+      ${contactedCount ? `<div style="cursor:pointer" onclick="navigateTo('kontakte')"><span style="font-size:12px;color:var(--ff-blue);font-weight:600">${contactedCount} kontaktiert →</span></div>` : ''}
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
       <input type="text" class="form-input" id="firmenSearchInput" placeholder="Firmen filtern..." value="${escAttr(firmenSearch)}"
@@ -975,10 +1014,10 @@ function renderFirmaCard(f) {
 
   // Contact line
   const contacts = [
-    f.address ? `📍 ${escHtml(f.address)}` : '',
-    f.phone ? `📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a>` : '',
-    f.email ? `✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a>` : '',
-    f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
+    f.address ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.pin} ${escHtml(f.address)}</span>` : '',
+    f.phone ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.phone} <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a></span>` : '',
+    f.email ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.mail} <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></span>` : '',
+    f.website ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.globe} <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a></span>` : '',
   ].filter(Boolean);
 
   const called   = !!f.calledAt;
@@ -989,9 +1028,9 @@ function renderFirmaCard(f) {
   const dotColor = noInterest ? '#dc2626' : interesse ? 'var(--ff-blue,#3b82f6)' : called ? 'var(--ff-success,#16a34a)' : null;
 
   const statusBadges = [
-    called && !interesse && !noInterest ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Angerufen</span>` : '',
-    interesse ? `<span class="badge" style="font-size:10px;background:var(--ff-blue,#3b82f6);color:#fff">⭐ Interesse</span>` : '',
-    noInterest ? `<span class="badge" style="font-size:10px;background:#dc2626;color:#fff">✗ Kein Interesse</span>` : '',
+    called && !interesse && !noInterest ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff;display:inline-flex;align-items:center;gap:3px">${IC.check} Angerufen</span>` : '',
+    interesse ? `<span class="badge" style="font-size:10px;background:var(--ff-blue,#3b82f6);color:#fff;display:inline-flex;align-items:center;gap:3px">${IC.star} Interesse</span>` : '',
+    noInterest ? `<span class="badge" style="font-size:10px;background:#dc2626;color:#fff;display:inline-flex;align-items:center;gap:3px">${IC.x} Kein Interesse</span>` : '',
   ].filter(Boolean).join('');
 
   const noteSection = called ? `
@@ -1009,7 +1048,7 @@ function renderFirmaCard(f) {
   const generalNoteSection = `
     <div style="margin-top:6px">
       <textarea rows="2"
-        placeholder="📝 Notizen..."
+        placeholder="Notizen..."
         style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:var(--card);color:var(--ink);resize:vertical;box-sizing:border-box;${f.notes ? 'border-color:var(--ff-blue,#3b82f6)' : ''}"
         oninput="saveFirmaGeneralNote('${escAttr(f.id)}', this.value)">${escHtml(f.notes || '')}</textarea>
     </div>`;
@@ -1040,17 +1079,17 @@ function renderFirmaCard(f) {
       <button class="btn btn-sm${called && !interesse && !noInterest ? '' : ''}"
         style="${called && !interesse && !noInterest ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)' : ''}"
         onclick="setFirmaStatus('${escAttr(f.id)}','called')">
-        ${called && !interesse && !noInterest ? '✓ Angerufen' : '📞 Anrufen'}
+        <span style="display:inline-flex;align-items:center;gap:4px">${called && !interesse && !noInterest ? IC.check : IC.phone} ${called && !interesse && !noInterest ? 'Angerufen' : 'Anrufen'}</span>
       </button>
       <button class="btn btn-sm"
         style="${interesse ? 'background:var(--ff-blue,#3b82f6);color:#fff;border-color:var(--ff-blue,#3b82f6)' : ''}"
         onclick="setFirmaStatus('${escAttr(f.id)}','interesse')">
-        ${interesse ? '⭐ Interesse' : '⭐ Interesse'}
+        <span style="display:inline-flex;align-items:center;gap:4px">${IC.star} Interesse</span>
       </button>
       <button class="btn btn-sm"
         style="${noInterest ? 'background:#dc2626;color:#fff;border-color:#dc2626' : ''}"
         onclick="setFirmaStatus('${escAttr(f.id)}','noInterest')">
-        ${noInterest ? '✗ Kein Interesse' : '✗ Kein Interesse'}
+        <span style="display:inline-flex;align-items:center;gap:4px">${IC.x} Kein Interesse</span>
       </button>
       <button class="btn btn-sm btn-secondary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
       <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
@@ -1098,7 +1137,7 @@ async function setFirmaStatus(id, status) {
   renderFirmenPage();
   updateKontakteBadge();
 
-  const labels = { called: 'Als angerufen markiert', interesse: '⭐ Interesse markiert', noInterest: '✗ Kein Interesse markiert' };
+  const labels = { called: 'Als angerufen markiert', interesse: 'Interesse markiert', noInterest: 'Kein Interesse markiert' };
   try {
     await apiFirmaUpdate(id, patch);
     showToast(alreadyActive ? 'Markierung entfernt.' : labels[status], 'success');
@@ -1161,9 +1200,9 @@ function renderKontaktePage() {
 
   // Tab-Leiste
   const tabs = [
-    { key: 'called',      label: '📞 Angerufen',      count: calledList.length,     color: 'var(--ff-success,#16a34a)' },
-    { key: 'interesse',   label: '⭐ Interesse',       count: interesseList.length,  color: 'var(--ff-blue,#3b82f6)'   },
-    { key: 'noInterest',  label: '✗ Kein Interesse',  count: noInterestList.length, color: '#dc2626'                   },
+    { key: 'called',      label: `${IC.phone} Angerufen`,      count: calledList.length,     color: 'var(--ff-success,#16a34a)' },
+    { key: 'interesse',   label: `${IC.star} Interesse`,        count: interesseList.length,  color: 'var(--ff-blue,#3b82f6)'   },
+    { key: 'noInterest',  label: `${IC.x} Kein Interesse`,     count: noInterestList.length, color: '#dc2626'                   },
   ];
 
   const tabBar = `<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
@@ -1183,9 +1222,9 @@ function renderKontaktePage() {
       : type === 'interesse' ? 'var(--ff-blue,#3b82f6)'
       : (hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)');
     const contacts = [
-      f.phone ? `📞 <a href="tel:${escAttr(f.phone)}" style="font-weight:700;color:var(--ff-blue,#3b82f6)">${escHtml(f.phone)}</a>` : '',
-      f.email ? `✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a>` : '',
-      f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,28))}</a>` : '',
+      f.phone ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.phone} <a href="tel:${escAttr(f.phone)}" style="font-weight:700;color:var(--ff-blue,#3b82f6)">${escHtml(f.phone)}</a></span>` : '',
+      f.email ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.mail} <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></span>` : '',
+      f.website ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.globe} <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,28))}</a></span>` : '',
     ].filter(Boolean);
     const dateStr = type === 'noInterest' ? `Markiert am ${fmtDate(f.noInterestAt)}`
       : type === 'interesse' ? `Interesse seit ${fmtDate(f.interesseAt)}`
@@ -1201,8 +1240,8 @@ function renderKontaktePage() {
           ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
         </div>
         <div style="font-size:11px;color:var(--ff-muted);margin:3px 0">${dateStr}</div>
-        ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap">📝 ${escHtml(f.notes)}</div>` : ''}
-        ${type === 'called' && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap">📞 ${escHtml(f.calledNote)}</div>` : ''}
+        ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap;display:flex;gap:5px;align-items:flex-start">${IC.note} ${escHtml(f.notes)}</div>` : ''}
+        ${type === 'called' && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap;display:flex;gap:5px;align-items:flex-start">${IC.phone} ${escHtml(f.calledNote)}</div>` : ''}
         <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -1354,7 +1393,7 @@ function renderFirmaFootprint(f, fp) {
   const website = company.website || f.website || '';
   const category = company.category || f.category || '';
 
-  const contactRow = (icon, html) => `<div style="margin-bottom:5px;font-size:13px">${icon} ${html}</div>`;
+  const contactRow = (icon, html) => `<div style="margin-bottom:5px;font-size:13px;display:flex;align-items:center;gap:5px">${icon} ${html}</div>`;
 
   const overviewHtml = `
     <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
@@ -1371,14 +1410,14 @@ function renderFirmaFootprint(f, fp) {
           ${impressum.uid ? `<span class="badge badge-blue" style="font-size:10px">UID: ${escHtml(impressum.uid)}</span>` : ''}
         </div>` : ''}
         <div style="margin-top:10px">
-          ${phones.length ? phones.map(p => contactRow('📞', `<a href="tel:${escAttr(p)}">${escHtml(p)}</a>`)).join('')
-            : contactRow('📞', '<span style="color:var(--ff-danger)">Keine Telefonnummer</span>')}
-          ${emails.length ? emails.map(em => contactRow('✉', `<a href="mailto:${escAttr(em)}">${escHtml(em)}</a>`)).join('')
-            : contactRow('✉', '<span style="color:var(--ff-danger)">Keine E-Mail</span>')}
-          ${address ? contactRow('📍', escHtml(address)) : ''}
-          ${website ? contactRow('🌐', `<a href="${escAttr(website)}" target="_blank" rel="noopener">${escHtml(website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 45))}</a>`)
-            : contactRow('🌐', '<span style="color:var(--ff-danger)">Keine Website</span>')}
-          ${gp.mapsUrl ? contactRow('🗺️', `<a href="${escAttr(gp.mapsUrl)}" target="_blank" rel="noopener">Google Maps Eintrag öffnen</a>`) : ''}
+          ${phones.length ? phones.map(p => contactRow(IC.phone, `<a href="tel:${escAttr(p)}">${escHtml(p)}</a>`)).join('')
+            : contactRow(IC.phone, '<span style="color:var(--ff-danger)">Keine Telefonnummer</span>')}
+          ${emails.length ? emails.map(em => contactRow(IC.mail, `<a href="mailto:${escAttr(em)}">${escHtml(em)}</a>`)).join('')
+            : contactRow(IC.mail, '<span style="color:var(--ff-danger)">Keine E-Mail</span>')}
+          ${address ? contactRow(IC.pin, escHtml(address)) : ''}
+          ${website ? contactRow(IC.globe, `<a href="${escAttr(website)}" target="_blank" rel="noopener">${escHtml(website.replace(/^https?:\/\/(www\.)?/, '').slice(0, 45))}</a>`)
+            : contactRow(IC.globe, '<span style="color:var(--ff-danger)">Keine Website</span>')}
+          ${gp.mapsUrl ? contactRow(IC.pin, `<a href="${escAttr(gp.mapsUrl)}" target="_blank" rel="noopener">Google Maps Eintrag öffnen</a>`) : ''}
         </div>
         <div style="font-size:11px;color:var(--ff-muted);margin-top:10px">Quelle: ${escHtml(f.source || '—')} · Gespeichert: ${fmtDate(f.savedAt)}</div>
       </div>
@@ -1670,7 +1709,7 @@ function renderFirmaFootprint(f, fp) {
     <div style="display:flex;gap:6px;flex-wrap:wrap;border-bottom:0.5px solid var(--ff-line);padding-bottom:10px">${tabBtns}</div>
     ${tabPanes}
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;border-top:0.5px solid var(--ff-line);padding-top:12px">
-      ${website ? `<a href="${escAttr(website)}" target="_blank" rel="noopener" class="btn btn-secondary">🌐 Website öffnen</a>` : ''}
+      ${website ? `<a href="${escAttr(website)}" target="_blank" rel="noopener" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:5px">${IC.globe} Website öffnen</a>` : ''}
       <button class="btn btn-secondary" onclick="closeModal('analyzeModal')">Schließen</button>
     </div>`;
 }
@@ -1716,10 +1755,10 @@ function renderFirmaDetailsFallback(f, errMsg) {
         <h3 style="font-size:18px;font-weight:800;color:var(--ff-navy);margin-bottom:2px">${escHtml(f.name)}</h3>
         ${f.category ? `<span class="search-result-category" style="margin-bottom:6px">${escHtml(f.category)}</span>` : ''}
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:4px 12px;font-size:12.5px;margin-top:8px">
-          ${f.address ? `<div>📍 ${escHtml(f.address)}</div>` : ''}
-          ${f.phone ? `<div>📞 <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a></div>` : '<div>📞 <span style="color:var(--ff-danger)">Nicht verfügbar</span></div>'}
-          ${f.email ? `<div>✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></div>` : '<div>✉ <span style="color:var(--ff-danger)">Nicht verfügbar</span></div>'}
-          ${f.website ? `<div>🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/,'').slice(0,30))}</a></div>` : '<div>🌐 <span style="color:var(--ff-danger)">Keine Website</span></div>'}
+          ${f.address ? `<div style="display:flex;align-items:center;gap:4px">${IC.pin} ${escHtml(f.address)}</div>` : ''}
+          ${f.phone ? `<div style="display:flex;align-items:center;gap:4px">${IC.phone} <a href="tel:${escAttr(f.phone)}">${escHtml(f.phone)}</a></div>` : `<div style="display:flex;align-items:center;gap:4px">${IC.phone} <span style="color:var(--ff-danger)">Nicht verfügbar</span></div>`}
+          ${f.email ? `<div style="display:flex;align-items:center;gap:4px">${IC.mail} <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></div>` : `<div style="display:flex;align-items:center;gap:4px">${IC.mail} <span style="color:var(--ff-danger)">Nicht verfügbar</span></div>`}
+          ${f.website ? `<div style="display:flex;align-items:center;gap:4px">${IC.globe} <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/,'').slice(0,30))}</a></div>` : `<div style="display:flex;align-items:center;gap:4px">${IC.globe} <span style="color:var(--ff-danger)">Keine Website</span></div>`}
         </div>
         <div style="font-size:11px;color:var(--ff-muted);margin-top:6px">Quelle: ${escHtml(f.source || '—')} · Gespeichert: ${fmtDate(f.savedAt)}</div>
       </div>
@@ -1729,7 +1768,7 @@ function renderFirmaDetailsFallback(f, errMsg) {
       ${recs.map(r => `<div style="font-size:12.5px;color:var(--ff-danger);padding:2px 0">❌ ${escHtml(r)}</div>`).join('')}
     </div>` : ''}
     <div style="display:flex;gap:8px;margin-top:16px;justify-content:flex-end;border-top:0.5px solid var(--ff-line);padding-top:12px">
-      ${f.website ? `<a href="${escAttr(f.website)}" target="_blank" class="btn btn-secondary">🌐 Website öffnen</a>` : ''}
+      ${f.website ? `<a href="${escAttr(f.website)}" target="_blank" class="btn btn-secondary" style="display:inline-flex;align-items:center;gap:5px">${IC.globe} Website öffnen</a>` : ''}
       <button class="btn btn-secondary" onclick="closeModal('analyzeModal')">Schließen</button>
     </div>`;
 }
