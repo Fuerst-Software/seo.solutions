@@ -325,11 +325,13 @@ const PAGE_TITLES = {
 function navigateTo(page) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.mob-tab').forEach(n => n.classList.remove('active'));
   $('page-' + page)?.classList.add('active');
-  document.querySelector(`[data-page="${page}"]`)?.classList.add('active');
+  document.querySelectorAll(`[data-page="${page}"]`).forEach(el => el.classList.add('active'));
   const titleEl = $('pageTitle');
   if (titleEl) titleEl.textContent = PAGE_TITLES[page] || page;
   $('sidebar')?.classList.remove('open');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
   renderPage(page);
 }
 
@@ -507,10 +509,12 @@ function updateQuickstart() {
 function markStep(id) { $(id)?.classList.add('done'); }
 
 function updateFirmenBadge() {
-  const badge = $('navBadgeFirmen');
-  if (!badge) return;
-  if (state.firmen.length > 0) { badge.textContent = state.firmen.length; badge.style.display = ''; }
-  else badge.style.display = 'none';
+  const n = state.firmen.length;
+  [$('navBadgeFirmen'), $('mobBadgeFirmen')].forEach(b => {
+    if (!b) return;
+    b.textContent = n;
+    b.style.display = n > 0 ? '' : 'none';
+  });
 }
 
 // =====================================================================
@@ -1171,10 +1175,11 @@ function saveFirmaGeneralNote(id, note) {
 
 function updateKontakteBadge() {
   const count = state.firmen.filter(f => f.calledAt || f.interesse || f.noInterest).length;
-  const badge = $('navBadgeKontakte');
-  if (!badge) return;
-  badge.textContent = count;
-  badge.style.display = count > 0 ? '' : 'none';
+  [$('navBadgeKontakte'), $('mobBadgeKontakte')].forEach(b => {
+    if (!b) return;
+    b.textContent = count;
+    b.style.display = count > 0 ? '' : 'none';
+  });
 }
 
 let _kontakteTab = 'called'; // aktiver Tab: 'called' | 'interesse' | 'noInterest'
