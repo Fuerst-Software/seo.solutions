@@ -211,6 +211,15 @@ function $(id) { return document.getElementById(id); }
 function genId() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
 function genApiKey() { return 'seo_' + Array.from({ length: 32 }, () => Math.random().toString(36)[2]).join(''); }
 
+function updateRangeTrack(el) {
+  const pct = ((el.value - el.min) / (el.max - el.min)) * 100;
+  el.style.background = `linear-gradient(to right, #2563eb 0%, #2563eb ${pct}%, var(--range-track, #334155) ${pct}%, var(--range-track, #334155) 100%)`;
+}
+
+function initRangeTracks() {
+  document.querySelectorAll('input[type="range"]').forEach(updateRangeTrack);
+}
+
 function escHtml(s) {
   return String(s ?? '')
     .replace(/&/g, '&amp;')
@@ -1959,6 +1968,7 @@ function updateThemeToggleIcon() {
 async function init() {
   loadDarkMode();
   initEventListeners();
+  initRangeTracks();
   renderDashboard(); // sofort rendern (noch leer)
   // Alles parallel vom Server laden
   await Promise.all([apiStateLoad(), apiFirmenLoad()]);

@@ -251,7 +251,7 @@
             <div class="form-group" style="margin:0">
               <label class="form-label">Umkreis</label>
               <div style="display:flex;align-items:center;gap:10px">
-                <input type="range" id="searchRadius" min="1" max="50" value="10" style="flex:1;accent-color:var(--px-blue)" oninput="document.getElementById('radiusVal').textContent=this.value" />
+                <input type="range" id="searchRadius" min="1" max="50" value="10" style="flex:1" oninput="document.getElementById('radiusVal').textContent=this.value;updateRangeTrack(this)" />
                 <span id="radiusVal" style="font-weight:850;color:var(--px-ink);min-width:26px;text-align:right">10</span>
                 <span style="color:var(--px-faint);font-size:12px">km</span>
               </div>
@@ -276,7 +276,7 @@
             <div class="form-group" style="margin:0">
               <label class="form-label">Max. SEO Score</label>
               <div style="display:flex;align-items:center;gap:8px">
-                <input type="range" id="searchMaxScore" min="0" max="100" value="100" style="flex:1;accent-color:var(--blue,#3b82f6)" oninput="document.getElementById('maxScoreVal').textContent=this.value" />
+                <input type="range" id="searchMaxScore" min="0" max="100" value="100" style="flex:1" oninput="document.getElementById('maxScoreVal').textContent=this.value;updateRangeTrack(this)" />
                 <span id="maxScoreVal" style="font-weight:700;color:var(--ink);min-width:26px;text-align:right">100</span>
               </div>
               <div style="font-size:10px;color:var(--muted);margin-top:2px">Nur Firmen mit Score ≤ diesem Wert</div>
