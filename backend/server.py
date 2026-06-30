@@ -2552,6 +2552,60 @@ def delete_job(job_id):
     return jsonify({"ok": True})
 
 
+# ===== FIRMEN (Server-Side Storage für geräteübergreifenden Sync) =====
+
+_firmen_lock = threading.Lock()
+
+def _read_firmen() -> list:
+    db = read_db()
+    return db.get("firmen", [])
+
+def _write_firmen(firmen: list):
+    with _firmen_lock:
+        db = read_db()
+        db["firmen"] = firmen
+        write_db(db)
+
+@app.get("/api/firmen")
+def get_firmen():
+    return jsonify(_read_firmen())
+
+@app.post("/api/firmen")
+def create_firma():
+    f = request.get_json() or {}
+    if not f.get("id"):
+        f["id"] = gen_id()
+    if not f.get("savedAt"):
+        f["savedAt"] = now_iso()
+    firmen = _read_firmen()
+    # Kein Duplikat nach Name
+    if any(x.get("id") == f["id"] or x.get("name","").lower() == f.get("name","").lower() for x in firmen):
+        return jsonify({"error": "already_exists"}), 409
+    firmen.append(f)
+    _write_firmen(firmen)
+    return jsonify(f), 201
+
+@app.put("/api/firmen/<firma_id>")
+def update_firma(firma_id):
+    patch = request.get_json() or {}
+    firmen = _read_firmen()
+    for f in firmen:
+        if f.get("id") == firma_id:
+            f.update(patch)
+            _write_firmen(firmen)
+            return jsonify(f)
+    return jsonify({"error": "not_found"}), 404
+
+@app.delete("/api/firmen/<firma_id>")
+def delete_firma(firma_id):
+    firmen = _read_firmen()
+    new_list = [f for f in firmen if f.get("id") != firma_id]
+    if len(new_list) == len(firmen):
+        return jsonify({"error": "not_found"}), 404
+    _write_firmen(new_list)
+    return jsonify({"ok": True})
+
+
 # ===== ACTIVITIES =====
 
 @app.get("/api/activities")

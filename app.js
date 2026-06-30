@@ -18,7 +18,7 @@ const state = {
   activities: load('seo_activities', []),
   settings: load('seo_settings', {}),
   stats: load('seo_stats', {}),
-  firmen: load('seo_firmen', []),
+  firmen: [],           // wird vom Server geladen, kein localStorage
   searchHistory: load('seo_searchHistory', []),
 };
 
@@ -33,11 +33,80 @@ function saveState() {
     localStorage.setItem('seo_activities', JSON.stringify(state.activities));
     localStorage.setItem('seo_settings', JSON.stringify(state.settings));
     localStorage.setItem('seo_stats', JSON.stringify(state.stats));
-    localStorage.setItem('seo_firmen', JSON.stringify(state.firmen));
+    // seo_firmen wird NICHT mehr lokal gespeichert — läuft über Server-API
     localStorage.setItem('seo_searchHistory', JSON.stringify(state.searchHistory));
   } catch (e) {
     console.warn('saveState fehlgeschlagen', e);
   }
+}
+
+// ===== FIRMEN SERVER-API =====
+async function apiFirmenLoad() {
+  try {
+    const res = await fetch(API_BASE + '/api/firmen');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    state.firmen = await res.json();
+    updateFirmenBadge();
+    updateKontakteBadge();
+  } catch (e) {
+    console.warn('[Firmen] Laden fehlgeschlagen:', e);
+    // Fallback: alte localStorage-Daten migrieren
+    const old = localStorage.getItem('seo_firmen');
+    if (old) {
+      try {
+        const parsed = JSON.parse(old);
+        if (parsed.length) {
+          state.firmen = parsed;
+          // Einmalig zum Server hochladen
+          for (const f of parsed) {
+            fetch(API_BASE + '/api/firmen', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(f)
+            }).catch(() => {});
+          }
+          localStorage.removeItem('seo_firmen');
+          showToast('Firmen wurden zum Server migriert.', 'success');
+        }
+      } catch {}
+    }
+    updateFirmenBadge();
+    updateKontakteBadge();
+  }
+}
+
+async function apiFirmaCreate(firma) {
+  const res = await fetch(API_BASE + '/api/firmen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(firma),
+  });
+  if (res.status === 409) throw new Error('already_exists');
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function apiFirmaUpdate(id, patch) {
+  const res = await fetch(API_BASE + '/api/firmen/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+async function apiFirmaDelete(id) {
+  const res = await fetch(API_BASE + '/api/firmen/' + id, { method: 'DELETE' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+}
+
+// Debounce-Map für Notiz-Saves (verhindert zu viele API-Calls beim Tippen)
+const _noteDebounce = {};
+function debounceNote(id, patch) {
+  clearTimeout(_noteDebounce[id]);
+  _noteDebounce[id] = setTimeout(() => {
+    apiFirmaUpdate(id, patch).catch(e => console.warn('[Notiz] Save fehlgeschlagen:', e));
+  }, 600);
 }
 
 // Firmen-Seite UI state
@@ -627,7 +696,7 @@ async function analyzeWebsite(url) {
   }
 }
 
-function saveFirmaFromAnalysis() {
+async function saveFirmaFromAnalysis() {
   const a = window._lastAnalysis;
   if (!a) { showToast('Keine Analysedaten vorhanden.', 'error'); return; }
   const d = a.data;
@@ -651,17 +720,23 @@ function saveFirmaFromAnalysis() {
     savedAt: new Date().toISOString(),
     notes: '',
   };
-  state.firmen.push(firma);
-  addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: 'aus Analyse', status: 'success', color: '#087a43' });
-  saveState();
-  updateFirmenBadge();
-  showToast(`"${firma.name}" gespeichert!`, 'success');
+  try {
+    await apiFirmaCreate(firma);
+    state.firmen.push(firma);
+    addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: 'aus Analyse', status: 'success', color: '#087a43' });
+    saveState();
+    updateFirmenBadge();
+    showToast(`"${firma.name}" gespeichert!`, 'success');
+  } catch (e) {
+    if (e.message === 'already_exists') showToast('Firma bereits gespeichert.', 'info');
+    else showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+  }
 }
 
 // =====================================================================
 // FIRMA SPEICHERN (aus Suchergebnis)
 // =====================================================================
-function saveFirma(index) {
+async function saveFirma(index) {
   const biz = window._lastSearchResults?.[index];
   if (!biz) return;
   if (state.firmen.some(f => f.name.toLowerCase() === (biz.name || '').toLowerCase())) {
@@ -697,13 +772,24 @@ function saveFirma(index) {
     savedAt: new Date().toISOString(),
     notes: '',
   };
-  state.firmen.push(firma);
   const btn = $(`save-btn-${index}`);
-  if (btn) { btn.textContent = '✓ Gespeichert'; btn.className = 'btn btn-sm btn-success'; btn.disabled = true; }
-  updateFirmenBadge();
-  addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: firma.category, status: 'success', color: '#087a43' });
-  saveState();
-  showToast(`"${firma.name}" gespeichert!`, 'success');
+  if (btn) { btn.textContent = '…'; btn.disabled = true; }
+  try {
+    await apiFirmaCreate(firma);
+    state.firmen.push(firma);
+    if (btn) { btn.textContent = '✓ Gespeichert'; btn.className = 'btn btn-sm btn-success'; }
+    updateFirmenBadge();
+    addActivity({ title: `Firma "${firma.name}" gespeichert`, meta: firma.category, status: 'success', color: '#087a43' });
+    saveState();
+    showToast(`"${firma.name}" gespeichert!`, 'success');
+  } catch (e) {
+    if (e.message === 'already_exists') {
+      showToast('Firma bereits gespeichert.', 'info');
+    } else {
+      showToast('Speichern fehlgeschlagen: ' + e.message, 'error');
+    }
+    if (btn) { btn.textContent = '★ Speichern'; btn.disabled = false; }
+  }
 }
 
 // Aus Firma eine verbundene Website machen (Legacy-Funktion, von Firmen-Karte genutzt)
@@ -884,43 +970,47 @@ function renderFirmaCard(f) {
   </div>`;
 }
 
-function deleteFirma(id) {
+async function deleteFirma(id) {
   state.firmen = state.firmen.filter(f => f.id !== id);
-  saveState();
   renderFirmenPage();
   updateFirmenBadge();
-  showToast('Firma entfernt.', 'success');
+  try {
+    await apiFirmaDelete(id);
+    showToast('Firma entfernt.', 'success');
+  } catch (e) {
+    showToast('Fehler beim Entfernen: ' + e.message, 'error');
+  }
 }
 
-function toggleFirmaAngerufen(id) {
+async function toggleFirmaAngerufen(id) {
   const f = state.firmen.find(x => x.id === id);
   if (!f) return;
-  if (f.calledAt) {
-    // Rückgängig machen
-    f.calledAt = null;
-    f.calledNote = '';
-    showToast('Anruf-Markierung entfernt.', 'info');
-  } else {
-    f.calledAt = new Date().toISOString();
-    showToast(`${f.name} als angerufen markiert.`, 'success');
-  }
-  saveState();
+  const patch = f.calledAt
+    ? { calledAt: null, calledNote: '' }
+    : { calledAt: new Date().toISOString() };
+  Object.assign(f, patch);
   renderFirmenPage();
   updateKontakteBadge();
+  try {
+    await apiFirmaUpdate(id, patch);
+    showToast(patch.calledAt ? `${f.name} als angerufen markiert.` : 'Anruf-Markierung entfernt.', 'success');
+  } catch (e) {
+    showToast('Sync-Fehler: ' + e.message, 'error');
+  }
 }
 
 function saveFirmaNote(id, note) {
   const f = state.firmen.find(x => x.id === id);
   if (!f) return;
   f.calledNote = note;
-  saveState();
+  debounceNote(id, { calledNote: note });
 }
 
 function saveFirmaGeneralNote(id, note) {
   const f = state.firmen.find(x => x.id === id);
   if (!f) return;
   f.notes = note;
-  saveState();
+  debounceNote(id, { notes: note });
 }
 
 function updateKontakteBadge() {
@@ -1681,12 +1771,15 @@ function updateThemeToggleIcon() {
 // =====================================================================
 // INIT
 // =====================================================================
-function init() {
+async function init() {
   loadDarkMode();
   initEventListeners();
   loadSettings();
   renderDashboard();
   updateFirmenBadge();
+  // Firmen vom Server laden (geräteübergreifend)
+  await apiFirmenLoad();
+  renderDashboard(); // Badge-Zahlen aktualisieren
 }
 
 if (document.readyState === 'loading') {
