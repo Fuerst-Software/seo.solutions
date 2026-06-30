@@ -981,25 +981,18 @@ function renderFirmaCard(f) {
     f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
   ].filter(Boolean);
 
-  const called = !!f.calledAt;
+  const called   = !!f.calledAt;
+  const interesse = !!f.interesse;
   const noInterest = !!f.noInterest;
 
-  const calledBtnStyle = called
-    ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)'
-    : '';
-  const calledLabel = called ? `✓ Angerufen` : '📞 Anrufen';
-
-  const noInterestBtnStyle = noInterest
-    ? 'background:#dc2626;color:#fff;border-color:#dc2626'
-    : '';
-  const noInterestLabel = noInterest ? '✗ Kein Interesse' : '✗ Kein Interesse';
+  // Dot-Farbe: roter Punkt = kein Interesse, blauer Punkt = Interesse, grüner = angerufen
+  const dotColor = noInterest ? '#dc2626' : interesse ? 'var(--ff-blue,#3b82f6)' : called ? 'var(--ff-success,#16a34a)' : null;
 
   const statusBadges = [
-    called ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>` : '',
+    called && !interesse && !noInterest ? `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Angerufen</span>` : '',
+    interesse ? `<span class="badge" style="font-size:10px;background:var(--ff-blue,#3b82f6);color:#fff">⭐ Interesse</span>` : '',
     noInterest ? `<span class="badge" style="font-size:10px;background:#dc2626;color:#fff">✗ Kein Interesse</span>` : '',
   ].filter(Boolean).join('');
-
-  const dotColor = noInterest ? '#dc2626' : (called ? 'var(--ff-success,#16a34a)' : null);
 
   const noteSection = called ? `
     <div style="margin-top:8px;background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px">
@@ -1021,8 +1014,10 @@ function renderFirmaCard(f) {
         oninput="saveFirmaGeneralNote('${escAttr(f.id)}', this.value)">${escHtml(f.notes || '')}</textarea>
     </div>`;
 
-  return `<div class="website-item" id="firma-card-${escAttr(f.id)}" style="${noInterest ? 'opacity:0.6' : ''}">
-    <div style="width:44px;height:44px;border-radius:10px;background:${noInterest ? '#9ca3af' : scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0;position:relative">
+  const bgColor = noInterest ? '#9ca3af' : scoreColor;
+
+  return `<div class="website-item" id="firma-card-${escAttr(f.id)}" style="${noInterest ? 'opacity:0.55' : ''}">
+    <div style="width:44px;height:44px;border-radius:10px;background:${bgColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0;position:relative">
       ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
       ${dotColor ? `<span style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:${dotColor};border-radius:50%;border:2px solid var(--card,#fff)"></span>` : ''}
     </div>
@@ -1042,8 +1037,21 @@ function renderFirmaCard(f) {
       ${noteSection}
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
-      <button class="btn btn-sm" style="${calledBtnStyle}" onclick="toggleFirmaAngerufen('${escAttr(f.id)}')">${calledLabel}</button>
-      <button class="btn btn-sm" style="${noInterestBtnStyle};${noInterest ? '' : 'opacity:0.7'}" onclick="toggleKeinInteresse('${escAttr(f.id)}')">${noInterestLabel}</button>
+      <button class="btn btn-sm${called && !interesse && !noInterest ? '' : ''}"
+        style="${called && !interesse && !noInterest ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)' : ''}"
+        onclick="setFirmaStatus('${escAttr(f.id)}','called')">
+        ${called && !interesse && !noInterest ? '✓ Angerufen' : '📞 Anrufen'}
+      </button>
+      <button class="btn btn-sm"
+        style="${interesse ? 'background:var(--ff-blue,#3b82f6);color:#fff;border-color:var(--ff-blue,#3b82f6)' : ''}"
+        onclick="setFirmaStatus('${escAttr(f.id)}','interesse')">
+        ${interesse ? '⭐ Interesse' : '⭐ Interesse'}
+      </button>
+      <button class="btn btn-sm"
+        style="${noInterest ? 'background:#dc2626;color:#fff;border-color:#dc2626' : ''}"
+        onclick="setFirmaStatus('${escAttr(f.id)}','noInterest')">
+        ${noInterest ? '✗ Kein Interesse' : '✗ Kein Interesse'}
+      </button>
       <button class="btn btn-sm btn-secondary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
       <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
     </div>
@@ -1062,33 +1070,38 @@ async function deleteFirma(id) {
   }
 }
 
-async function toggleFirmaAngerufen(id) {
+// Status exklusiv setzen: 'called' | 'interesse' | 'noInterest'
+// Nochmaliges Klicken auf aktiven Status = zurücksetzen auf neutral
+async function setFirmaStatus(id, status) {
   const f = state.firmen.find(x => x.id === id);
   if (!f) return;
-  const patch = f.calledAt
-    ? { calledAt: null, calledNote: '' }
-    : { calledAt: new Date().toISOString() };
-  Object.assign(f, patch);
-  renderFirmenPage();
-  updateKontakteBadge();
-  try {
-    await apiFirmaUpdate(id, patch);
-    showToast(patch.calledAt ? `${f.name} als angerufen markiert.` : 'Anruf-Markierung entfernt.', 'success');
-  } catch (e) {
-    showToast('Sync-Fehler: ' + e.message, 'error');
-  }
-}
 
-async function toggleKeinInteresse(id) {
-  const f = state.firmen.find(x => x.id === id);
-  if (!f) return;
-  const patch = { noInterest: !f.noInterest, noInterestAt: !f.noInterest ? new Date().toISOString() : null };
+  const now = new Date().toISOString();
+  // Prüfen ob bereits aktiv → dann zurücksetzen
+  const alreadyActive =
+    (status === 'called'      && f.calledAt   && !f.interesse && !f.noInterest) ||
+    (status === 'interesse'   && f.interesse) ||
+    (status === 'noInterest'  && f.noInterest);
+
+  const patch = {
+    calledAt:     null,
+    interesse:    false, interesseAt:   null,
+    noInterest:   false, noInterestAt:  null,
+  };
+  if (!alreadyActive) {
+    if (status === 'called')     { patch.calledAt    = now; }
+    if (status === 'interesse')  { patch.interesse   = true; patch.interesseAt  = now; patch.calledAt = f.calledAt || now; }
+    if (status === 'noInterest') { patch.noInterest  = true; patch.noInterestAt = now; patch.calledAt = f.calledAt || now; }
+  }
+
   Object.assign(f, patch);
   renderFirmenPage();
   updateKontakteBadge();
+
+  const labels = { called: 'Als angerufen markiert', interesse: '⭐ Interesse markiert', noInterest: '✗ Kein Interesse markiert' };
   try {
     await apiFirmaUpdate(id, patch);
-    showToast(f.noInterest ? `${f.name} — Kein Interesse markiert.` : 'Markierung entfernt.', f.noInterest ? 'error' : 'info');
+    showToast(alreadyActive ? 'Markierung entfernt.' : labels[status], 'success');
   } catch (e) {
     showToast('Sync-Fehler: ' + e.message, 'error');
   }
@@ -1109,68 +1122,87 @@ function saveFirmaGeneralNote(id, note) {
 }
 
 function updateKontakteBadge() {
-  const count = state.firmen.filter(f => f.calledAt || f.noInterest).length;
+  const count = state.firmen.filter(f => f.calledAt || f.interesse || f.noInterest).length;
   const badge = $('navBadgeKontakte');
   if (!badge) return;
   badge.textContent = count;
   badge.style.display = count > 0 ? '' : 'none';
 }
 
+let _kontakteTab = 'called'; // aktiver Tab: 'called' | 'interesse' | 'noInterest'
+function switchKontakteTab(tab) {
+  _kontakteTab = tab;
+  renderKontaktePage();
+}
+
 function renderKontaktePage() {
   const container = $('kontakteList');
   if (!container) return;
 
-  const called = state.firmen.filter(f => f.calledAt && !f.noInterest)
+  // Drei exklusive Gruppen
+  const calledList     = state.firmen.filter(f => f.calledAt && !f.interesse && !f.noInterest)
     .sort((a, b) => new Date(b.calledAt) - new Date(a.calledAt));
-  const noInterest = state.firmen.filter(f => f.noInterest)
-    .sort((a, b) => new Date(b.noInterestAt || 0) - new Date(a.noInterestAt || 0));
+  const interesseList  = state.firmen.filter(f => f.interesse)
+    .sort((a, b) => new Date(b.interesseAt||0) - new Date(a.interesseAt||0));
+  const noInterestList = state.firmen.filter(f => f.noInterest)
+    .sort((a, b) => new Date(b.noInterestAt||0) - new Date(a.noInterestAt||0));
 
-  if (!called.length && !noInterest.length) {
+  const total = calledList.length + interesseList.length + noInterestList.length;
+
+  if (!total) {
     container.innerHTML = `<div class="empty-state" style="padding:32px">
       <svg viewBox="0 0 24 24" style="width:48px;height:48px"><path d="M6.6 10.8c1.4 2.8 3.8 5.1 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1-9.4 0-17-7.6-17-17 0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1L6.6 10.8z"/></svg>
       <h4>Noch keine Firmen kontaktiert</h4>
-      <p>Markiere Firmen in "Meine Firmen" als angerufen oder als kein Interesse.</p>
+      <p>Klicke bei gespeicherten Firmen auf "Anrufen", "Interesse" oder "Kein Interesse".</p>
       <button class="btn btn-primary" onclick="navigateTo('firmen')">Meine Firmen</button>
     </div>`;
     return;
   }
 
-  const withNote = called.filter(f => f.calledNote?.trim()).length;
-  const statsHtml = `<div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:20px">
-    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-success)">${called.length}</span><span style="font-size:12px;color:var(--ff-muted)">Kontaktiert</span></div>
-    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:#dc2626">${noInterest.length}</span><span style="font-size:12px;color:var(--ff-muted)">Kein Interesse</span></div>
-    <div style="display:flex;align-items:center;gap:8px"><span style="font-size:22px;font-weight:950;color:var(--ff-blue)">${withNote}</span><span style="font-size:12px;color:var(--ff-muted)">mit Notiz</span></div>
+  // Tab-Leiste
+  const tabs = [
+    { key: 'called',      label: '📞 Angerufen',      count: calledList.length,     color: 'var(--ff-success,#16a34a)' },
+    { key: 'interesse',   label: '⭐ Interesse',       count: interesseList.length,  color: 'var(--ff-blue,#3b82f6)'   },
+    { key: 'noInterest',  label: '✗ Kein Interesse',  count: noInterestList.length, color: '#dc2626'                   },
+  ];
+
+  const tabBar = `<div style="display:flex;gap:6px;margin-bottom:18px;flex-wrap:wrap">
+    ${tabs.map(t => `
+      <button onclick="switchKontakteTab('${t.key}')"
+        style="padding:8px 16px;border-radius:20px;border:2px solid ${t.color};font-size:13px;font-weight:700;cursor:pointer;transition:all .15s;
+          ${_kontakteTab === t.key ? `background:${t.color};color:#fff` : `background:transparent;color:${t.color}`}">
+        ${t.label} <span style="opacity:.8">(${t.count})</span>
+      </button>`).join('')}
   </div>`;
 
-  function kontaktCard(f, isNoInterest) {
+  // Karte für einen Kontakt-Eintrag
+  function kontaktCard(f, type) {
     const s = f.seoScore;
     const hasWeb = !!f.website;
-    const scoreColor = isNoInterest ? '#9ca3af' : (hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)');
+    const cardColor = type === 'noInterest' ? '#9ca3af'
+      : type === 'interesse' ? 'var(--ff-blue,#3b82f6)'
+      : (hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)');
     const contacts = [
-      f.phone ? `📞 <a href="tel:${escAttr(f.phone)}" style="font-weight:700;color:var(--ff-blue)">${escHtml(f.phone)}</a>` : '',
+      f.phone ? `📞 <a href="tel:${escAttr(f.phone)}" style="font-weight:700;color:var(--ff-blue,#3b82f6)">${escHtml(f.phone)}</a>` : '',
       f.email ? `✉ <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a>` : '',
-      f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,30))}</a>` : '',
+      f.website ? `🌐 <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,28))}</a>` : '',
     ].filter(Boolean);
-    const statusLabel = isNoInterest
-      ? `<span class="badge" style="font-size:10px;background:#dc2626;color:#fff">✗ Kein Interesse</span>`
-      : `<span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>`;
-    const dateLabel = isNoInterest
-      ? `Kein Interesse seit ${fmtDate(f.noInterestAt)}`
+    const dateStr = type === 'noInterest' ? `Markiert am ${fmtDate(f.noInterestAt)}`
+      : type === 'interesse' ? `Interesse seit ${fmtDate(f.interesseAt)}`
       : `Angerufen am ${fmtDate(f.calledAt)}`;
 
-    return `<div class="website-item" style="${isNoInterest ? 'opacity:0.65' : ''}">
-      <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
-        ${typeof s === 'number' ? s : escHtml((f.name || '?')[0])}
+    return `<div class="website-item">
+      <div style="width:44px;height:44px;border-radius:10px;background:${cardColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
+        ${typeof s === 'number' && type !== 'noInterest' ? s : escHtml((f.name||'?')[0])}
       </div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
           ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
-          ${statusLabel}
         </div>
-        <div style="font-size:11px;color:var(--ff-muted);margin:4px 0">${dateLabel}</div>
-        ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📝 ${escHtml(f.notes)}</div>` : ''}
-        ${!isNoInterest && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📞 ${escHtml(f.calledNote)}</div>` : ''}
+        <div style="font-size:11px;color:var(--ff-muted);margin:3px 0">${dateStr}</div>
+        ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap">📝 ${escHtml(f.notes)}</div>` : ''}
+        ${type === 'called' && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap">📞 ${escHtml(f.calledNote)}</div>` : ''}
         <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -1179,19 +1211,18 @@ function renderKontaktePage() {
     </div>`;
   }
 
-  const calledSection = called.length ? `
-    <div style="font-size:11px;font-weight:700;color:var(--ff-muted);text-transform:uppercase;letter-spacing:.06em;margin:0 0 8px">
-      ✓ Kontaktiert (${called.length})
-    </div>
-    ${called.map(f => kontaktCard(f, false)).join('')}` : '';
+  const activeList = _kontakteTab === 'called' ? calledList
+    : _kontakteTab === 'interesse' ? interesseList
+    : noInterestList;
+  const activeType = _kontakteTab;
 
-  const noInterestSection = noInterest.length ? `
-    <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.06em;margin:16px 0 8px">
-      ✗ Kein Interesse (${noInterest.length})
-    </div>
-    ${noInterest.map(f => kontaktCard(f, true)).join('')}` : '';
+  const listHtml = activeList.length
+    ? activeList.map(f => kontaktCard(f, activeType)).join('')
+    : `<div class="empty-state" style="padding:24px">
+        <p style="color:var(--ff-muted)">Keine Firmen in diesem Tab.</p>
+       </div>`;
 
-  container.innerHTML = statsHtml + calledSection + noInterestSection;
+  container.innerHTML = tabBar + listHtml;
 }
 
 // =====================================================================
