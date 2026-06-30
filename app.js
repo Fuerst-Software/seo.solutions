@@ -840,13 +840,21 @@ function renderFirmaCard(f) {
     <div style="margin-top:8px;background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px">
       <div style="font-size:11px;font-weight:600;color:var(--ff-muted);margin-bottom:4px">
         Angerufen am ${fmtDate(f.calledAt)}
-        ${f.calledNote ? '' : '<span style="color:var(--ff-muted)"> · Noch keine Notiz</span>'}
+        ${f.calledNote ? '' : '<span style="color:var(--ff-muted)"> · Noch keine Gesprächsnotiz</span>'}
       </div>
-      <textarea id="note-${escAttr(f.id)}" rows="2"
+      <textarea rows="2"
         placeholder="Notiz zum Verkaufsgespräch..."
         style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:var(--card);color:var(--ink);resize:vertical;box-sizing:border-box"
         oninput="saveFirmaNote('${escAttr(f.id)}', this.value)">${escHtml(f.calledNote || '')}</textarea>
     </div>` : '';
+
+  const generalNoteSection = `
+    <div style="margin-top:6px">
+      <textarea rows="2"
+        placeholder="📝 Notizen..."
+        style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:var(--card);color:var(--ink);resize:vertical;box-sizing:border-box;${f.notes ? 'border-color:var(--ff-blue,#3b82f6)' : ''}"
+        oninput="saveFirmaGeneralNote('${escAttr(f.id)}', this.value)">${escHtml(f.notes || '')}</textarea>
+    </div>`;
 
   return `<div class="website-item" id="firma-card-${escAttr(f.id)}">
     <div style="width:44px;height:44px;border-radius:10px;background:${scoreColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0;position:relative">
@@ -865,6 +873,7 @@ function renderFirmaCard(f) {
         ${contacts.join('')}
       </div>
       <div style="font-size:11px;color:var(--faint);margin-top:4px">${fmtDate(f.savedAt)} · ${escHtml(f.source || '')}</div>
+      ${generalNoteSection}
       ${noteSection}
     </div>
     <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
@@ -904,6 +913,13 @@ function saveFirmaNote(id, note) {
   const f = state.firmen.find(x => x.id === id);
   if (!f) return;
   f.calledNote = note;
+  saveState();
+}
+
+function saveFirmaGeneralNote(id, note) {
+  const f = state.firmen.find(x => x.id === id);
+  if (!f) return;
+  f.notes = note;
   saveState();
 }
 
@@ -959,7 +975,8 @@ function renderKontaktePage() {
           <span class="badge" style="font-size:10px;background:var(--ff-success,#16a34a);color:#fff">✓ Kontaktiert</span>
         </div>
         <div style="font-size:11px;color:var(--ff-muted);margin:4px 0">Angerufen am ${fmtDate(f.calledAt)}</div>
-        ${f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:6px 0;white-space:pre-wrap">${escHtml(f.calledNote)}</div>` : `<div style="font-size:11px;color:var(--faint)">Keine Notiz hinterlegt</div>`}
+        ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📝 ${escHtml(f.notes)}</div>` : ''}
+        ${f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:8px 10px;margin:4px 0;white-space:pre-wrap">📞 ${escHtml(f.calledNote)}</div>` : `<div style="font-size:11px;color:var(--faint)">Keine Gesprächsnotiz</div>`}
         <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
       </div>
       <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
