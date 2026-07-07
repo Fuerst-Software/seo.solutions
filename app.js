@@ -1232,34 +1232,84 @@ function renderKontaktePage() {
   function kontaktCard(f, type) {
     const s = f.seoScore;
     const hasWeb = !!f.website;
-    const cardColor = type === 'noInterest' ? '#9ca3af'
-      : type === 'interesse' ? 'var(--ff-blue,#3b82f6)'
-      : (hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)');
+    const called     = !!f.calledAt;
+    const interesse  = !!f.interesse;
+    const noInterest = !!f.noInterest;
+
+    const scoreColor = hasWeb && typeof s === 'number' ? scoreColorFor(s) : 'var(--faint,#9ca3af)';
+    const cardColor  = noInterest ? '#9ca3af' : interesse ? 'var(--ff-blue,#3b82f6)' : scoreColor;
+
     const contacts = [
+      f.address ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.pin} ${escHtml(f.address)}</span>` : '',
       f.phone ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.phone} <a href="tel:${escAttr(f.phone)}" style="font-weight:700;color:var(--ff-blue,#3b82f6)">${escHtml(f.phone)}</a></span>` : '',
       f.email ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.mail} <a href="mailto:${escAttr(f.email)}">${escHtml(f.email)}</a></span>` : '',
       f.website ? `<span style="display:inline-flex;align-items:center;gap:3px">${IC.globe} <a href="${escAttr(f.website)}" target="_blank">${escHtml(f.website.replace(/^https?:\/\/(www\.)?/, '').slice(0,28))}</a></span>` : '',
     ].filter(Boolean);
-    const dateStr = type === 'noInterest' ? `Markiert am ${fmtDate(f.noInterestAt)}`
-      : type === 'interesse' ? `Interesse seit ${fmtDate(f.interesseAt)}`
+
+    const dateStr = noInterest ? `Kein Interesse seit ${fmtDate(f.noInterestAt)}`
+      : interesse ? `Interesse seit ${fmtDate(f.interesseAt)}`
       : `Angerufen am ${fmtDate(f.calledAt)}`;
 
-    return `<div class="website-item">
+    const scoreBar = hasWeb && typeof s === 'number' ? `
+      <div style="display:flex;align-items:center;gap:8px;margin:4px 0">
+        <div style="flex:1;height:5px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div style="height:100%;width:${s}%;background:${scoreColor};border-radius:2px"></div>
+        </div>
+        <span style="font-size:11px;font-weight:700;color:${scoreColor}">${s}/100</span>
+      </div>` : '';
+
+    const noteSection = called ? `
+      <div style="margin-top:6px;background:var(--soft-bg);border-radius:8px;padding:8px 10px">
+        <div style="font-size:11px;font-weight:600;color:var(--ff-muted);margin-bottom:4px">
+          Gesprächsnotiz${f.calledNote ? '' : ' <span style="color:var(--ff-muted)">· noch leer</span>'}
+        </div>
+        <textarea rows="2"
+          placeholder="Notiz zum Verkaufsgespräch..."
+          style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:var(--card-bg);color:var(--ink);resize:vertical;box-sizing:border-box"
+          oninput="saveFirmaNote('${escAttr(f.id)}', this.value)">${escHtml(f.calledNote || '')}</textarea>
+      </div>` : '';
+
+    const generalNote = `
+      <div style="margin-top:6px">
+        <textarea rows="2"
+          placeholder="Notizen..."
+          style="width:100%;font-size:12px;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:var(--card-bg);color:var(--ink);resize:vertical;box-sizing:border-box;${f.notes ? 'border-color:var(--ff-blue,#3b82f6)' : ''}"
+          oninput="saveFirmaGeneralNote('${escAttr(f.id)}', this.value)">${escHtml(f.notes || '')}</textarea>
+      </div>`;
+
+    return `<div class="website-item" id="kontakt-card-${escAttr(f.id)}">
       <div style="width:44px;height:44px;border-radius:10px;background:${cardColor};color:#fff;display:flex;align-items:center;justify-content:center;font-size:${typeof s === 'number' ? '15px' : '18px'};font-weight:800;flex-shrink:0">
-        ${typeof s === 'number' && type !== 'noInterest' ? s : escHtml((f.name||'?')[0])}
+        ${typeof s === 'number' ? s : escHtml((f.name||'?')[0])}
       </div>
       <div style="flex:1;min-width:0">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <strong style="font-size:14px;color:var(--ink)">${escHtml(f.name)}</strong>
           ${f.category ? `<span class="badge" style="font-size:10px">${escHtml(f.category)}</span>` : ''}
         </div>
-        <div style="font-size:11px;color:var(--ff-muted);margin:3px 0">${dateStr}</div>
-        ${f.notes ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap;display:flex;gap:5px;align-items:flex-start">${IC.note} ${escHtml(f.notes)}</div>` : ''}
-        ${type === 'called' && f.calledNote ? `<div style="font-size:12px;color:var(--ink);background:var(--surface2,#f1f5f9);border-radius:8px;padding:7px 10px;margin:4px 0;white-space:pre-wrap;display:flex;gap:5px;align-items:flex-start">${IC.phone} ${escHtml(f.calledNote)}</div>` : ''}
+        ${scoreBar}
+        <div style="font-size:11px;color:var(--ff-muted);margin:2px 0">${dateStr}</div>
         <div style="font-size:12px;color:var(--muted);display:flex;flex-wrap:wrap;gap:4px 12px;margin-top:4px">${contacts.join('')}</div>
+        ${generalNote}
+        ${noteSection}
       </div>
       <div class="card-actions">
-        <button class="btn btn-sm btn-secondary" onclick="navigateTo('firmen');setTimeout(()=>showFirmaDetails('${escAttr(f.id)}'),200)">Details</button>
+        <button class="btn btn-sm${called && !interesse && !noInterest ? '' : ''}"
+          style="${called && !interesse && !noInterest ? 'background:var(--ff-success,#16a34a);color:#fff;border-color:var(--ff-success,#16a34a)' : ''}"
+          onclick="setFirmaStatus('${escAttr(f.id)}','called');renderKontaktePage()">
+          <span style="display:inline-flex;align-items:center;gap:4px">${called && !interesse && !noInterest ? IC.check : IC.phone} ${called && !interesse && !noInterest ? 'Angerufen' : 'Anrufen'}</span>
+        </button>
+        <button class="btn btn-sm"
+          style="${interesse ? 'background:var(--ff-blue,#3b82f6);color:#fff;border-color:var(--ff-blue,#3b82f6)' : ''}"
+          onclick="setFirmaStatus('${escAttr(f.id)}','interesse');renderKontaktePage()">
+          <span style="display:inline-flex;align-items:center;gap:4px">${IC.star} Interesse</span>
+        </button>
+        <button class="btn btn-sm"
+          style="${noInterest ? 'background:#dc2626;color:#fff;border-color:#dc2626' : ''}"
+          onclick="setFirmaStatus('${escAttr(f.id)}','noInterest');renderKontaktePage()">
+          <span style="display:inline-flex;align-items:center;gap:4px">${IC.x} Kein Interesse</span>
+        </button>
+        <button class="btn btn-sm btn-secondary" onclick="showFirmaDetails('${escAttr(f.id)}')">Details</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteFirma('${escAttr(f.id)}')">Entfernen</button>
       </div>
     </div>`;
   }
