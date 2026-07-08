@@ -1199,128 +1199,188 @@ async function deleteAnalyse(id) {
 
 function generateKundenBericht(a) {
   const r = a.result || {};
-  const score = typeof r.seoScore === 'number' ? r.seoScore : null;
-  const https = r.https;
-  const mobile = r.mobileScore;
-  const speed  = r.speedScore;
-  const title  = r.title;
+  const score   = typeof r.seoScore === 'number' ? r.seoScore : null;
+  const https   = r.https;
+  const mobile  = typeof r.mobileScore === 'number' ? r.mobileScore : null;
+  const speed   = typeof r.speedScore  === 'number' ? r.speedScore  : null;
+  const title   = r.title;
   const metaDesc = r.metaDescription;
-  const h1     = r.h1;
-  const hasSitemap = r.hasSitemap;
-  const hasRobots  = r.hasRobots;
-  const brokenLinks = r.brokenLinksCount || 0;
+  const h1      = r.h1;
+  const hasSitemap     = r.hasSitemap;
+  const brokenLinks    = r.brokenLinksCount || 0;
+  const imagesWithout  = r.imagesWithoutAlt || 0;
+  const wordCount      = r.wordCount || 0;
+  const hasImpressum   = r.hasImpressum;
+  const hasDatenschutz = r.hasDatenschutz;
+  const hasAgb         = r.hasAgb;
+  const hasCookieBanner = r.hasCookieBanner;
 
-  // Ampel-Bewertung
-  const rating = (val, gut, ok) => {
-    if (val === null || val === undefined) return 'grau';
-    if (typeof val === 'boolean') return val ? 'gruen' : 'rot';
-    if (val >= gut) return 'gruen';
-    if (val >= ok)  return 'gelb';
-    return 'rot';
+  const rt = (val, gut, ok) => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'boolean') return val ? 'gut' : 'rot';
+    if (val >= gut) return 'gut'; if (val >= ok) return 'gelb'; return 'rot';
   };
-  const ampel = (r) => {
-    const c = r==='gruen'?'#16a34a':r==='gelb'?'#ea580c':'#dc2626';
-    const l = r==='gruen'?'Gut':r==='gelb'?'Verbesserungsbedarf':'Handlungsbedarf';
-    return `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:${c}">
-      <span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0"></span>${l}</span>`;
+  const ampel = (s, labels) => {
+    if (!s) return `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:600;color:var(--muted)"><span style="width:9px;height:9px;border-radius:50%;background:var(--muted);flex-shrink:0"></span>Nicht geprüft</span>`;
+    const cfg = {
+      gut:  ['#16a34a', labels?.gut  || 'Gut'],
+      gelb: ['#ea580c', labels?.gelb || 'Verbesserungsbedarf'],
+      rot:  ['#dc2626', labels?.rot  || 'Handlungsbedarf'],
+    }[s];
+    return `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:${cfg[0]}"><span style="width:9px;height:9px;border-radius:50%;background:${cfg[0]};flex-shrink:0"></span>${cfg[1]}</span>`;
   };
 
-  const scoreRating = rating(score, 70, 45);
-  const mobileRating = rating(mobile, 70, 45);
-  const speedRating  = rating(speed, 70, 45);
-  const httpsRating  = rating(https, true, true);
+  const scoreR  = rt(score,  70, 45);
+  const mobileR = rt(mobile, 70, 45);
+  const speedR  = rt(speed,  70, 45);
+  const httpsR  = https === true ? 'gut' : https === false ? 'rot' : null;
+
+  const seoDetail = [
+    !title    ? '→ Kein aussagekräftiger Seitentitel — Google zeigt diesen in Suchergebnissen an' : null,
+    !metaDesc ? '→ Keine Meta-Beschreibung — der Beschreibungstext unter Ihrem Google-Eintrag fehlt' : null,
+    !h1       ? '→ Keine Hauptüberschrift (H1) — Google weiß nicht worum es auf der Seite geht' : null,
+    !hasSitemap ? '→ Keine Sitemap — Google findet Ihre Inhalte langsamer' : null,
+    wordCount < 300 ? `→ Sehr wenig Textinhalt (${wordCount} Wörter) — Google bevorzugt informative Seiten` : null,
+    imagesWithout > 0 ? `→ ${imagesWithout} Bilder ohne Bildbeschreibung (Alt-Text)` : null,
+  ].filter(Boolean);
 
   const bereiche = [
     {
-      icon: '🔍', titel: 'Sichtbarkeit in Suchmaschinen (SEO)',
-      rating: scoreRating,
+      icon: IC.search || '🔍', titel: 'Google-Sichtbarkeit (SEO)',
+      rating: scoreR,
       text: score !== null
-        ? `Ihre Website erreicht aktuell einen SEO-Score von ${score}/100. ${score < 50 ? 'Es gibt deutliche Schwachstellen, die dazu führen, dass Ihre Website in Google schwer gefunden wird.' : score < 70 ? 'Es sind einige wichtige Punkte offen, die Ihre Platzierung in Suchmaschinen verbessern würden.' : 'Ihre Website ist grundsätzlich gut aufgestellt, mit gezielten Maßnahmen lässt sich noch mehr herausholen.'}`
-        : 'Die SEO-Grundlagen konnten nicht vollständig geprüft werden.',
-      detail: [
-        title ? null : '→ Kein aussagekräftiger Seitentitel gefunden',
-        metaDesc ? null : '→ Meta-Beschreibung fehlt oder ist nicht optimiert',
-        h1 ? null : '→ Keine klare Hauptüberschrift (H1) vorhanden',
-        !hasSitemap ? '→ Sitemap nicht gefunden — erschwert die Indexierung' : null,
-      ].filter(Boolean),
+        ? (score < 45 ? `Score ${score}/100 — Ihre Website ist für Google-Suchen kaum optimiert. Potenzielle Kunden finden Sie nicht, weil grundlegende SEO-Elemente fehlen.`
+          : score < 65 ? `Score ${score}/100 — Es gibt mehrere offene Punkte, die dafür sorgen, dass Sie in Google schlechter platziert sind als Ihre Mitbewerber.`
+          : `Score ${score}/100 — Die SEO-Grundlage stimmt. Mit gezielten Maßnahmen lässt sich die Sichtbarkeit weiter steigern.`)
+        : 'SEO-Daten konnten nicht ermittelt werden.',
+      detail: seoDetail,
     },
     {
-      icon: '📱', titel: 'Mobile Darstellung',
-      rating: mobileRating,
-      text: mobile !== null && mobile !== undefined
-        ? `${mobile < 50 ? 'Ihre Website hat auf Smartphones deutliche Darstellungsprobleme. Da über 60 % aller Besucher mobil surfen, verlieren Sie hier potenzielle Kunden.' : mobile < 70 ? 'Die mobile Darstellung ist vorhanden, aber noch nicht optimal. Einige Bereiche könnten für Smartphone-Nutzer verbessert werden.' : 'Die Website zeigt sich auf mobilen Geräten gut. Kleinere Optimierungen könnten das Erlebnis noch weiter verbessern.'}`
-        : 'Die mobile Darstellung konnte nicht vollständig bewertet werden.',
+      icon: IC.mobile || '📱', titel: 'Smartphone & Tablet',
+      rating: mobileR,
+      text: mobile !== null
+        ? (mobile < 45 ? `Score ${mobile}/100 — Ihre Website ist auf Mobilgeräten schwer bedienbar. Über 60 % aller Nutzer surfen per Handy — hier verlieren Sie täglich Besucher.`
+          : mobile < 70 ? `Score ${mobile}/100 — Die Seite lädt auf dem Handy, aber es gibt Darstellungsprobleme, die Besucher schnell abspringen lassen.`
+          : `Score ${mobile}/100 — Die mobile Darstellung funktioniert gut.`)
+        : 'Mobildarstellung konnte nicht bewertet werden.',
       detail: [],
     },
     {
-      icon: '⚡', titel: 'Ladegeschwindigkeit',
-      rating: speedRating,
-      text: speed !== null && speed !== undefined
-        ? `${speed < 50 ? 'Die Website lädt langsam. Studien zeigen: Jede Sekunde Ladezeit kostet Besucher und senkt die Conversion-Rate messbar.' : speed < 70 ? 'Die Ladezeit ist akzeptabel, aber es gibt Optimierungspotenzial. Schnellere Seiten ranken in Google besser und konvertieren mehr Besucher.' : 'Die Ladegeschwindigkeit ist gut. Mit weiterer Optimierung bleibt die Website auch bei wachsendem Traffic performant.'}`
-        : 'Die Ladegeschwindigkeit konnte nicht gemessen werden.',
+      icon: IC.bolt || '⚡', titel: 'Ladegeschwindigkeit',
+      rating: speedR,
+      text: speed !== null
+        ? (speed < 45 ? `Score ${speed}/100 — Die Website lädt langsam. 53 % der Besucher verlassen eine Seite, die länger als 3 Sekunden lädt. Google wertet das negativ.`
+          : speed < 70 ? `Score ${speed}/100 — Die Ladezeit ist akzeptabel, aber nicht optimal. Schnellere Websites ranken besser in Google.`
+          : `Score ${speed}/100 — Die Ladegeschwindigkeit ist gut.`)
+        : 'Ladegeschwindigkeit konnte nicht gemessen werden.',
       detail: [],
     },
     {
-      icon: '🔒', titel: 'Sicherheit & Vertrauen',
-      rating: httpsRating,
-      text: https
-        ? 'Ihre Website ist mit HTTPS verschlüsselt — ein wichtiges Vertrauenssignal für Besucher und Suchmaschinen.'
-        : 'Ihre Website läuft ohne HTTPS-Verschlüsselung. Das wirkt auf Besucher unseriös und wird von Google negativ bewertet.',
-      detail: brokenLinks > 0 ? [`→ ${brokenLinks} defekte Links gefunden — negative Auswirkung auf Nutzerfreundlichkeit und SEO`] : [],
+      icon: IC.lock || '🔒', titel: 'Sicherheit (HTTPS)',
+      rating: httpsR,
+      text: https === true
+        ? `Die Website ist verschlüsselt (HTTPS).${brokenLinks > 0 ? ` Es wurden jedoch ${brokenLinks} defekte Links gefunden, die Besucher auf Fehlerseiten führen.` : ''}`
+        : https === false
+        ? 'Die Website ist NICHT verschlüsselt. Browser zeigen Besuchern eine rote Warnung „Nicht sicher" — das schreckt Kunden ab und schadet dem Google-Ranking.'
+        : 'Sicherheitsstatus konnte nicht geprüft werden.',
+      detail: brokenLinks > 0 && https ? [`→ ${brokenLinks} defekte Links — Besucher landen auf Fehlerseiten`] : [],
+    },
+  ];
+
+  // Rechtliche Pflichten
+  const recht = [
+    {
+      label: 'Impressum',
+      ok: hasImpressum,
+      fehlt: 'Kein Impressum gefunden. In Österreich ist ein Impressum für gewerbliche Websites gesetzlich vorgeschrieben (§ 5 ECG). Ohne Impressum drohen Abmahnungen.',
+    },
+    {
+      label: 'Datenschutzerklärung',
+      ok: hasDatenschutz,
+      fehlt: 'Keine Datenschutzerklärung gefunden. Seit der DSGVO (2018) ist diese für jede Website Pflicht — Bußgelder bis zu 20 Millionen Euro sind möglich.',
+    },
+    {
+      label: 'Cookie-Hinweis',
+      ok: hasCookieBanner,
+      fehlt: 'Kein Cookie-Banner gefunden. Sobald die Website Tracking oder externe Dienste nutzt, ist ein Cookie-Hinweis gesetzlich verpflichtend (DSGVO).',
+    },
+    {
+      label: 'AGB',
+      ok: hasAgb,
+      fehlt: 'Keine AGB gefunden. Für Unternehmen mit Online-Diensten oder Verkauf empfohlen — sie schützen bei Streitigkeiten mit Kunden.',
+      warn: true,
     },
   ];
 
   const bereicheHtml = bereiche.map(b => `
-    <div style="border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:12px;background:var(--card-bg)">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
-        <div style="font-size:15px;font-weight:700;color:var(--ink)">${b.icon} ${b.titel}</div>
+    <div style="border:1px solid var(--border);border-radius:14px;padding:16px 20px;margin-bottom:10px;background:var(--card-bg)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:14px;font-weight:700;color:var(--ink)">${b.titel}</div>
         ${ampel(b.rating)}
       </div>
-      <p style="font-size:13.5px;color:var(--text);line-height:1.6;margin:0 0 ${b.detail.length?'10px':'0'}">${b.text}</p>
-      ${b.detail.length ? `<div style="font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px">${b.detail.map(d=>`<div>${d}</div>`).join('')}</div>` : ''}
-    </div>
-  `).join('');
+      <p style="font-size:13px;color:var(--text);line-height:1.6;margin:0 0 ${b.detail.length?'10px':'0'}">${b.text}</p>
+      ${b.detail.length ? `<div style="font-size:12px;color:#dc2626;display:flex;flex-direction:column;gap:3px;margin-top:8px">${b.detail.map(d=>`<div>${d}</div>`).join('')}</div>` : ''}
+    </div>`).join('');
+
+  const rechtHtml = recht.map(p => {
+    const fehlend = p.ok === false;
+    const vorhanden = p.ok === true;
+    const color = vorhanden ? '#16a34a' : fehlend ? (p.warn ? '#ea580c' : '#dc2626') : 'var(--muted)';
+    const label = vorhanden ? 'Vorhanden' : fehlend ? (p.warn ? 'Empfohlen' : 'Fehlt — Pflicht!') : 'Nicht geprüft';
+    return `<div style="border:1px solid ${fehlend && !p.warn ? '#fca5a5' : 'var(--border)'};border-radius:12px;padding:14px 16px;margin-bottom:8px;background:${fehlend && !p.warn ? 'rgba(220,38,38,0.06)' : 'var(--card-bg)'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:${fehlend ? '8px' : '0'}">
+        <div style="font-size:13.5px;font-weight:700;color:var(--ink)">${p.label}</div>
+        <span style="font-size:12px;font-weight:700;color:${color}">${label}</span>
+      </div>
+      ${fehlend ? `<p style="font-size:12.5px;color:var(--text);line-height:1.55;margin:0">${p.fehlt}</p>` : ''}
+    </div>`;
+  }).join('');
 
   return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px" id="druckBericht">
 
       <!-- Kopf -->
-      <div style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);border-radius:16px;padding:28px 28px 24px;margin-bottom:20px;color:#fff">
-        <div style="font-size:12px;font-weight:600;opacity:.75;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Gratis Website-Analyse</div>
-        <div style="font-size:22px;font-weight:800;margin-bottom:4px">${escHtml(a.name || new URL(a.url).hostname)}</div>
-        <div style="font-size:13px;opacity:.8">${escHtml(a.url)}</div>
+      <div style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);border-radius:16px;padding:24px 28px;margin-bottom:18px;color:#fff">
+        <div style="font-size:11px;font-weight:600;opacity:.7;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px">Gratis Website-Analyse</div>
+        <div style="font-size:21px;font-weight:800;margin-bottom:3px">${escHtml(a.name || new URL(a.url).hostname)}</div>
+        <div style="font-size:12.5px;opacity:.75">${escHtml(a.url)}</div>
         ${score !== null ? `
-          <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
-            <div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.15);border:3px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900">${score}</div>
+          <div style="margin-top:16px;display:flex;align-items:center;gap:14px">
+            <div style="width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.15);border:3px solid rgba(255,255,255,.35);display:flex;align-items:center;justify-content:center;font-size:19px;font-weight:900">${score}</div>
             <div>
-              <div style="font-size:13px;opacity:.75">Gesamt-Score</div>
-              <div style="font-size:16px;font-weight:700">${score < 40 ? 'Dringender Handlungsbedarf' : score < 65 ? 'Verbesserungsbedarf' : score < 80 ? 'Solide Basis' : 'Gut aufgestellt'}</div>
+              <div style="font-size:12px;opacity:.7">Gesamt-Score</div>
+              <div style="font-size:15px;font-weight:700">${score < 35 ? 'Dringender Handlungsbedarf' : score < 55 ? 'Schwach — Handlungsbedarf' : score < 70 ? 'Verbesserungsbedarf' : 'Solide Basis'}</div>
             </div>
-          </div>
-        ` : ''}
+          </div>` : ''}
       </div>
 
       <!-- Einleitung -->
-      <div style="background:var(--soft-bg);border-radius:12px;padding:16px 18px;margin-bottom:18px;font-size:13.5px;color:var(--text);line-height:1.65;border-left:3px solid #2563eb">
-        Wir haben Ihre Website einer ersten automatischen Prüfung unterzogen. Die folgende Auswertung gibt Ihnen einen Überblick über die wichtigsten Bereiche — und zeigt auf, wo gezielter Handlungsbedarf besteht.
+      <div style="background:var(--soft-bg);border-radius:12px;padding:14px 18px;margin-bottom:16px;font-size:13px;color:var(--text);line-height:1.6;border-left:3px solid #2563eb">
+        Wir haben Ihre Website einer automatischen Prüfung unterzogen. Die folgende Auswertung zeigt, wo dringender Handlungsbedarf besteht — und was getan werden sollte, um mehr Kunden zu gewinnen.
       </div>
 
-      <!-- Bereiche -->
+      <!-- Analyse-Bereiche -->
       ${bereicheHtml}
 
+      <!-- Rechtliche Pflichten -->
+      <div style="margin-top:20px;margin-bottom:8px">
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px">Rechtliche Pflichten</div>
+        ${rechtHtml}
+      </div>
+
       <!-- Angebot -->
-      <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:24px 28px;margin-top:22px;color:#fff">
-        <div style="font-size:16px;font-weight:800;margin-bottom:10px">Was wir für Sie tun können</div>
-        <p style="font-size:13.5px;opacity:.85;line-height:1.65;margin:0 0 16px">
-          Bei Fürst Software entwickeln wir professionelle Websites, die nicht nur gut aussehen — sondern auch gefunden werden und Anfragen generieren. Wir übernehmen SEO-Optimierung, schnelle Ladezeiten, mobile Darstellung und technische Sicherheit als Standard.
+      <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:22px 26px;margin-top:20px;color:#fff">
+        <div style="font-size:15px;font-weight:800;margin-bottom:8px">Was wir für Sie tun können</div>
+        <p style="font-size:13px;opacity:.85;line-height:1.6;margin:0 0 14px">
+          Die oben aufgezeigten Schwachstellen sind lösbar. Fürst Software entwickelt Websites, die technisch einwandfrei, rechtssicher und in Google gut auffindbar sind — alles aus einer Hand.
         </p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
-          ${['Professionelles Webdesign','SEO-Grundoptimierung inklusive','Schnelle Ladezeiten','Mobile-First Entwicklung'].map(p=>`
-            <div style="display:flex;align-items:center;gap:8px;font-size:13px;opacity:.9">
-              <span style="width:18px;height:18px;background:#2563eb;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">✓</span>${p}
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:14px">
+          ${['HTTPS & Sicherheit inklusive','Impressum & Datenschutz korrekt','Mobile-First Design','Google-Optimierung (SEO)'].map(p=>`
+            <div style="display:flex;align-items:center;gap:7px;font-size:12.5px;opacity:.9">
+              <span style="width:16px;height:16px;min-width:16px;background:#2563eb;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;flex-shrink:0">✓</span>${p}
             </div>`).join('')}
         </div>
-        <div style="padding-top:14px;border-top:1px solid rgba(255,255,255,.12);font-size:13px;opacity:.7">
+        <div style="padding-top:12px;border-top:1px solid rgba(255,255,255,.1);font-size:12px;opacity:.6">
           Fürst Software · fuerst-software.com · office@fuerst-software.com
         </div>
       </div>
