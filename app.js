@@ -1343,223 +1343,293 @@ function printKundenBericht(id) {
 
 function buildAnalysePdfHtml(a) {
   const r = a.result || {};
-  const score     = typeof r.seoScore === 'number' ? r.seoScore : null;
-  const https     = r.https;
-  const mobile    = typeof r.mobileScore === 'number' ? r.mobileScore : null;
-  const speed     = typeof r.speedScore  === 'number' ? r.speedScore  : null;
-  const title     = r.title;
-  const metaDesc  = r.metaDescription;
-  const h1        = r.h1;
-  const hasSitemap   = r.hasSitemap;
-  const hasRobots    = r.hasRobots;
-  const brokenLinks  = r.brokenLinksCount || 0;
-  const today     = new Date().toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
-  const hostname  = (() => { try { return new URL(a.url).hostname; } catch { return a.url; } })();
+  const score    = typeof r.seoScore    === 'number' ? r.seoScore    : null;
+  const mobile   = typeof r.mobileScore === 'number' ? r.mobileScore : null;
+  const speed    = typeof r.speedScore  === 'number' ? r.speedScore  : null;
+  const https    = r.https;
+  const title    = r.title;
+  const metaDesc = r.metaDescription;
+  const h1       = r.h1;
+  const hasSitemap     = r.hasSitemap;
+  const hasRobots      = r.hasRobots;
+  const hasImpressum   = r.hasImpressum;
+  const hasDatenschutz = r.hasDatenschutz;
+  const hasAgb         = r.hasAgb;
+  const hasCookieBanner = r.hasCookieBanner;
+  const brokenLinks    = r.brokenLinksCount || 0;
+  const imagesWithout  = r.imagesWithoutAlt || 0;
+  const wordCount      = r.wordCount || 0;
+  const loadTime       = r.loadTime;
+  const today    = new Date().toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
+  const hostname = (() => { try { return new URL(a.url).hostname; } catch { return a.url; } })();
 
-  const rating = (val, gut, ok) => {
+  const rt = (val, gut, ok) => {
     if (val === null || val === undefined) return null;
     if (typeof val === 'boolean') return val ? 'gut' : 'schlecht';
-    if (val >= gut) return 'gut';
-    if (val >= ok)  return 'mittel';
-    return 'schlecht';
+    if (val >= gut) return 'gut'; if (val >= ok) return 'mittel'; return 'schlecht';
   };
-  const badge = (r) => {
-    if (!r) return '<span style="background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">Nicht verfügbar</span>';
-    const c = r==='gut'?'#dcfce7':r==='mittel'?'#fff7ed':'#fee2e2';
-    const t = r==='gut'?'#16a34a':r==='mittel'?'#ea580c':'#dc2626';
-    const l = r==='gut'?'Gut':r==='mittel'?'Verbesserungsbedarf':'Handlungsbedarf';
-    return `<span style="background:${c};color:${t};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${l}</span>`;
+  const bdg = (s, labelOverride) => {
+    if (!s) return `<span style="background:#f1f5f9;color:#94a3b8;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:600">Nicht geprüft</span>`;
+    const cfg = {
+      gut:     ['#dcfce7','#16a34a', labelOverride?.gut     || 'In Ordnung'],
+      mittel:  ['#fff7ed','#ea580c', labelOverride?.mittel  || 'Verbesserungsbedarf'],
+      schlecht:['#fee2e2','#dc2626', labelOverride?.schlecht || 'Handlungsbedarf'],
+    }[s];
+    return `<span style="background:${cfg[0]};color:${cfg[1]};padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:700">${cfg[2]}</span>`;
   };
 
-  const scoreRating  = rating(score, 70, 45);
-  const mobileRating = rating(mobile, 70, 45);
-  const speedRating  = rating(speed, 70, 45);
-  const httpsRating  = https === true ? 'gut' : https === false ? 'schlecht' : null;
+  const scoreR  = rt(score,  70, 45);
+  const mobileR = rt(mobile, 70, 45);
+  const speedR  = rt(speed,  70, 45);
+  const httpsR  = https === true ? 'gut' : https === false ? 'schlecht' : null;
 
-  // Score-Farbe für den großen Kreis
-  const scoreFarbe = !scoreRating ? '#94a3b8' : scoreRating==='gut' ? '#16a34a' : scoreRating==='mittel' ? '#ea580c' : '#dc2626';
-  const scoreText  = !score ? '—' : score < 40 ? 'Kritisch' : score < 60 ? 'Schwach' : score < 75 ? 'Ausbaufähig' : 'Solide';
+  const scoreFarbe = !scoreR ? '#94a3b8' : scoreR==='gut'?'#16a34a':scoreR==='mittel'?'#ea580c':'#dc2626';
+  const scoreText  = score===null ? '—' : score<35?'Sehr schwach':score<50?'Schwach':score<65?'Ausbaufähig':score<80?'Mittel':'Gut';
 
-  // Analyse-Zeilen für die Tabelle
+  // ── Haupt-Analysezeilen ─────────────────────────────────────────────────
+  const seoHinweise = [
+    !title    ? 'Kein aussagekräftiger Seitentitel vorhanden — Google zeigt diesen in den Suchergebnissen an' : (title.length < 30 || title.length > 65) ? `Seitentitel ist ${title.length < 30 ? 'zu kurz' : 'zu lang'} (${title.length} Zeichen, optimal: 30–65)` : null,
+    !metaDesc ? 'Keine Meta-Beschreibung — der Text unter Ihrem Google-Eintrag fehlt völlig' : (metaDesc.length < 120 || metaDesc.length > 160) ? `Meta-Beschreibung nicht optimal (${metaDesc.length} Zeichen, optimal: 120–160)` : null,
+    !h1       ? 'Keine Hauptüberschrift (H1) — Google weiß nicht worum es auf der Seite geht' : null,
+    !hasSitemap ? 'Keine Sitemap vorhanden — Google findet Ihre Inhalte langsamer und unvollständig' : null,
+    wordCount < 300 ? `Sehr wenig Textinhalt (${wordCount} Wörter) — Google bevorzugt informative Seiten` : null,
+    imagesWithout > 0 ? `${imagesWithout} Bilder ohne Beschreibung (Alt-Text) — unsichtbar für Google und blinde Nutzer` : null,
+  ].filter(Boolean);
+
   const rows = [
     {
       nr: 1,
-      bereich: 'Suchmaschinen-Sichtbarkeit (SEO)',
-      bewertung: score !== null
-        ? (score < 50
-          ? `Score ${score}/100 — Ihre Website wird in Google kaum gefunden. Grundlegende SEO-Elemente fehlen oder sind nicht optimiert.`
-          : score < 70
-          ? `Score ${score}/100 — Die Website ist suchmaschinenfreundlich aufgebaut, jedoch gibt es offene Punkte, die Ihre Platzierung spürbar verbessern würden.`
-          : `Score ${score}/100 — Gute SEO-Basis. Mit gezielten Maßnahmen lässt sich die Sichtbarkeit weiter steigern.`)
-        : 'SEO-Grunddaten konnten nicht vollständig ermittelt werden.',
-      hinweise: [
-        !title    ? 'Seitentitel fehlt oder ist nicht aussagekräftig'        : null,
-        !metaDesc ? 'Meta-Beschreibung fehlt (wird in Suchergebnissen angezeigt)' : null,
-        !h1       ? 'Keine Hauptüberschrift (H1) gefunden'                   : null,
-        !hasSitemap ? 'Keine Sitemap vorhanden — erschwert die Indexierung'  : null,
-        !hasRobots  ? 'Keine robots.txt gefunden'                            : null,
-      ].filter(Boolean),
-      status: scoreRating,
+      bereich: 'Google-Sichtbarkeit (SEO)',
+      befund: score !== null
+        ? (score < 45
+          ? `Score ${score}/100 — Ihre Website ist für Google-Suchen kaum optimiert. Potenzielle Kunden, die nach Ihren Leistungen suchen, finden Ihre Website nicht. Die wichtigsten SEO-Grundlagen fehlen.`
+          : score < 65
+          ? `Score ${score}/100 — Die Basis ist vorhanden, aber es gibt mehrere offene Punkte, die dafür sorgen, dass Sie in Google schlechter platziert sind als Ihre Mitbewerber.`
+          : `Score ${score}/100 — Die SEO-Grundlage stimmt. Mit gezielten Optimierungen können Sie Ihre Position in Google weiter verbessern.`)
+        : 'SEO-Daten konnten nicht ermittelt werden.',
+      hinweise: seoHinweise,
+      status: scoreR,
     },
     {
       nr: 2,
-      bereich: 'Mobile Darstellung',
-      bewertung: mobile !== null
-        ? (mobile < 50
-          ? `Score ${mobile}/100 — Die Website hat auf Smartphones deutliche Darstellungsprobleme. Über 60 % aller Nutzer surfen mobil — hier verlieren Sie Besucher.`
+      bereich: 'Smartphone & Tablet (Mobile)',
+      befund: mobile !== null
+        ? (mobile < 45
+          ? `Score ${mobile}/100 — Ihre Website ist auf Mobilgeräten schwer bedienbar. Da mehr als 60 % aller Nutzer über das Smartphone surfen, verlieren Sie hier täglich potenzielle Kunden.`
           : mobile < 70
-          ? `Score ${mobile}/100 — Die mobile Ansicht ist vorhanden, aber nicht optimal. Einige Bereiche könnten für Smartphone-Nutzer verbessert werden.`
-          : `Score ${mobile}/100 — Die Website stellt sich auf mobilen Geräten gut dar.`)
-        : 'Mobile Darstellung konnte nicht bewertet werden.',
+          ? `Score ${mobile}/100 — Die Seite lädt auf dem Handy, jedoch gibt es Darstellungsprobleme, die Besucher frustrieren und abspringen lassen.`
+          : `Score ${mobile}/100 — Die mobile Darstellung funktioniert gut.`)
+        : 'Mobildarstellung konnte nicht bewertet werden.',
       hinweise: [],
-      status: mobileRating,
+      status: mobileR,
     },
     {
       nr: 3,
       bereich: 'Ladegeschwindigkeit',
-      bewertung: speed !== null
-        ? (speed < 50
-          ? `Score ${speed}/100 — Die Website lädt langsam. Jede zusätzliche Sekunde Ladezeit senkt die Anzahl der Besucher nachweislich.`
+      befund: speed !== null
+        ? (speed < 45
+          ? `Score ${speed}/100 — Die Website lädt langsam (${loadTime ? loadTime + 's' : ''}). Studien zeigen: 53 % der Besucher verlassen eine Seite, die länger als 3 Sekunden lädt. Google wertet langsame Seiten zudem schlechter.`
           : speed < 70
-          ? `Score ${speed}/100 — Die Ladezeit ist akzeptabel, Optimierungspotenzial ist vorhanden. Schnellere Seiten ranken in Google besser.`
+          ? `Score ${speed}/100 — Die Ladezeit ist akzeptabel, aber nicht optimal. Schnellere Websites erhalten bessere Google-Platzierungen und mehr Anfragen.`
           : `Score ${speed}/100 — Die Ladegeschwindigkeit ist gut.`)
         : 'Ladegeschwindigkeit konnte nicht gemessen werden.',
       hinweise: [],
-      status: speedRating,
+      status: speedR,
     },
     {
       nr: 4,
-      bereich: 'Sicherheit & Verschlüsselung (HTTPS)',
-      bewertung: https === true
-        ? 'Die Website ist mit HTTPS verschlüsselt — ein wichtiges Vertrauenssignal für Besucher und Suchmaschinen.'
+      bereich: 'Sicherheit (HTTPS)',
+      befund: https === true
+        ? `Die Website ist verschlüsselt (HTTPS). Besucher sehen kein Sicherheitswarnung im Browser.${brokenLinks > 0 ? ` Allerdings wurden ${brokenLinks} defekte Links gefunden, die Besucher auf Fehlerseiten führen.` : ''}`
         : https === false
-        ? 'Die Website verwendet keine HTTPS-Verschlüsselung. Browser markieren solche Seiten als "Nicht sicher", was Besucher abschreckt und von Google negativ bewertet wird.'
-        : 'HTTPS-Status konnte nicht geprüft werden.',
-      hinweise: brokenLinks > 0 ? [`${brokenLinks} defekte Links gefunden — beeinträchtigt Nutzerfreundlichkeit und SEO`] : [],
-      status: httpsRating,
+        ? `Die Website ist NICHT verschlüsselt. Browser wie Chrome und Firefox zeigen Besuchern eine rote Warnung „Nicht sicher". Das schreckt Kunden ab und führt zu deutlich weniger Anfragen. Google wertet unverschlüsselte Seiten schlechter.`
+        : `Sicherheitsstatus konnte nicht geprüft werden.`,
+      hinweise: brokenLinks > 0 ? [`${brokenLinks} defekte Links gefunden — Besucher landen auf Fehlerseiten`] : [],
+      status: https === null ? null : httpsR,
+    },
+  ];
+
+  // ── Rechtliche Pflichten ────────────────────────────────────────────────
+  const rechtRows = [
+    {
+      pflicht: 'Impressum',
+      status: hasImpressum === true ? 'gut' : hasImpressum === false ? 'schlecht' : null,
+      befund: hasImpressum === true
+        ? 'Impressum gefunden.'
+        : hasImpressum === false
+        ? 'Kein Impressum gefunden. In Österreich und Deutschland ist ein Impressum für gewerbliche Websites gesetzlich vorgeschrieben (§ 5 ECG). Fehlt es, drohen Abmahnungen und Bußgelder.'
+        : 'Konnte nicht geprüft werden.',
+    },
+    {
+      pflicht: 'Datenschutzerklärung',
+      status: hasDatenschutz === true ? 'gut' : hasDatenschutz === false ? 'schlecht' : null,
+      befund: hasDatenschutz === true
+        ? 'Datenschutzerklärung gefunden.'
+        : hasDatenschutz === false
+        ? 'Keine Datenschutzerklärung gefunden. Seit der DSGVO (Mai 2018) ist diese für jede Website Pflicht — unabhängig von der Unternehmensgröße. Verstöße können mit Bußgeldern bis zu 20 Mio. Euro geahndet werden.'
+        : 'Konnte nicht geprüft werden.',
+    },
+    {
+      pflicht: 'Cookie-Hinweis',
+      status: hasCookieBanner === true ? 'gut' : hasCookieBanner === false ? 'schlecht' : null,
+      befund: hasCookieBanner === true
+        ? 'Cookie-Hinweis gefunden.'
+        : hasCookieBanner === false
+        ? 'Kein Cookie-Hinweis gefunden. Sobald Ihre Website Tracking oder externe Dienste (Google Analytics, Maps, YouTube etc.) verwendet, ist ein Cookie-Banner gesetzlich verpflichtend.'
+        : 'Konnte nicht geprüft werden.',
+    },
+    {
+      pflicht: 'AGB',
+      status: hasAgb === true ? 'gut' : 'mittel',
+      befund: hasAgb === true
+        ? 'AGB gefunden.'
+        : 'Keine AGB gefunden. Für Unternehmen mit Online-Shop oder kostenpflichtigen Diensten sind AGB wichtig — sie schützen Sie rechtlich bei Streitigkeiten mit Kunden.',
     },
   ];
 
   const tabellenzeilen = rows.map(row => `
     <tr style="border-bottom:1px solid #e2e8f0;vertical-align:top">
-      <td style="padding:14px 10px 14px 0;font-size:12px;color:#64748b;width:28px;white-space:nowrap">${row.nr}</td>
-      <td style="padding:14px 14px 14px 0;width:200px">
-        <div style="font-size:12.5px;font-weight:700;color:#0f172a;margin-bottom:4px">${row.bereich}</div>
-        ${row.hinweise.length ? `<div style="margin-top:6px">${row.hinweise.map(h=>`<div style="font-size:11px;color:#ea580c;margin-bottom:2px">→ ${h}</div>`).join('')}</div>` : ''}
+      <td style="padding:13px 10px 13px 0;font-size:11.5px;color:#64748b;width:22px;white-space:nowrap">${row.nr}</td>
+      <td style="padding:13px 14px 13px 0;width:185px">
+        <div style="font-size:12px;font-weight:700;color:#0f172a;margin-bottom:${row.hinweise.length?'6px':'0'}">${row.bereich}</div>
+        ${row.hinweise.map(h=>`<div style="font-size:10.5px;color:#dc2626;margin-bottom:2px;line-height:1.4">→ ${h}</div>`).join('')}
       </td>
-      <td style="padding:14px 0;font-size:12px;color:#334155;line-height:1.55">${row.bewertung}</td>
-      <td style="padding:14px 0 14px 14px;text-align:right;white-space:nowrap">${badge(row.status)}</td>
-    </tr>
-  `).join('');
+      <td style="padding:13px 0;font-size:11.5px;color:#334155;line-height:1.55">${row.befund}</td>
+      <td style="padding:13px 0 13px 12px;text-align:right;white-space:nowrap">${bdg(row.status)}</td>
+    </tr>`).join('');
 
-  const logoSvg = `<svg width="52" height="52" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-    <rect width="100" height="100" rx="22" fill="#2563EB"/>
-    <rect x="18" y="24" width="64" height="14" rx="7" fill="white"/>
-    <rect x="18" y="44" width="48" height="14" rx="7" fill="white"/>
-    <rect x="18" y="64" width="30" height="14" rx="7" fill="white"/>
-  </svg>`;
+  const rechtZeilen = rechtRows.map(row => `
+    <tr style="border-bottom:1px solid #e2e8f0;vertical-align:top">
+      <td style="padding:11px 14px 11px 0;width:185px;font-size:12px;font-weight:700;color:#0f172a">${row.pflicht}</td>
+      <td style="padding:11px 0;font-size:11.5px;color:#334155;line-height:1.55">${row.befund}</td>
+      <td style="padding:11px 0 11px 12px;text-align:right;white-space:nowrap">${bdg(row.status, {gut:'Vorhanden',mittel:'Empfohlen',schlecht:'Fehlt — Pflicht!'})}</td>
+    </tr>`).join('');
+
+  // Anzahl kritischer Punkte zählen
+  const kritisch = [
+    !https, !hasImpressum, !hasDatenschutz, !hasCookieBanner,
+    (score !== null && score < 45), (mobile !== null && mobile < 45),
+  ].filter(Boolean).length;
+
+  const logoSvg = `<svg width="48" height="48" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" rx="22" fill="#2563EB"/><rect x="18" y="24" width="64" height="14" rx="7" fill="white"/><rect x="18" y="44" width="48" height="14" rx="7" fill="white"/><rect x="18" y="64" width="30" height="14" rx="7" fill="white"/></svg>`;
 
   return `<!DOCTYPE html><html lang="de"><head>
 <meta charset="UTF-8">
 <title>Website Analyse Auswertung — ${escHtml(hostname)}</title>
 <style>
-  * { margin:0; padding:0; box-sizing:border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background:#fff; color:#0f172a; font-size:13px; }
-  .page { max-width:794px; margin:0 auto; padding:40px 48px 32px; min-height:1123px; position:relative; display:flex; flex-direction:column; }
-  @media print {
-    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-    .page { padding:32px 48px 28px; }
-    @page { size:A4; margin:0; }
-  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:#fff;color:#0f172a;font-size:13px}
+  .page{max-width:794px;margin:0 auto;padding:36px 48px 28px;min-height:1123px;display:flex;flex-direction:column}
+  @media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}.page{padding:28px 44px 24px}@page{size:A4;margin:0}}
 </style>
 </head><body><div class="page">
 
   <!-- HEADER -->
-  <div style="text-align:center;padding-bottom:20px;border-bottom:1.5px solid #e2e8f0;margin-bottom:28px">
+  <div style="text-align:center;padding-bottom:18px;border-bottom:1.5px solid #e2e8f0;margin-bottom:24px">
     ${logoSvg}
-    <div style="font-size:20px;font-weight:800;color:#0f172a;margin-top:10px">Fürst Software & Web Development</div>
-    <div style="font-size:11px;color:#64748b;margin-top:3px">Florian Fürst · Wendlberg 11 · 5165 Berndorf bei Salzburg · Österreich</div>
+    <div style="font-size:19px;font-weight:800;color:#0f172a;margin-top:9px">Fürst Software & Web Development</div>
+    <div style="font-size:11px;color:#64748b;margin-top:2px">Florian Fürst · Wendlberg 11 · 5165 Berndorf bei Salzburg · Österreich</div>
   </div>
 
   <!-- TITEL -->
-  <div style="text-align:right;margin-bottom:28px">
-    <div style="font-size:36px;font-weight:900;color:#0f172a;letter-spacing:-0.5px">Website Analyse</div>
-    <div style="font-size:36px;font-weight:900;color:#0f172a;letter-spacing:-0.5px">Auswertung</div>
+  <div style="text-align:right;margin-bottom:24px">
+    <div style="font-size:34px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;line-height:1.1">Website Analyse</div>
+    <div style="font-size:34px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;line-height:1.1">Auswertung</div>
   </div>
 
   <!-- INFO-BOXEN -->
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px">
-    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:18px 20px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#2563eb;margin-bottom:10px">K U N D E</div>
-      <div style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:8px">${escHtml(a.name || hostname)}</div>
-      ${a.email ? `<div style="font-size:12px;color:#475569;margin-top:4px">${escHtml(a.email)}</div>` : ''}
-      <div style="font-size:12px;color:#475569;margin-top:4px">${escHtml(a.url)}</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:26px">
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#2563eb;margin-bottom:9px">K U N D E</div>
+      <div style="font-size:17px;font-weight:800;color:#0f172a;margin-bottom:6px">${escHtml(a.name || hostname)}</div>
+      ${a.email ? `<div style="font-size:11.5px;color:#475569;margin-top:3px">${escHtml(a.email)}</div>` : ''}
+      <div style="font-size:11.5px;color:#475569;margin-top:3px">${escHtml(a.url)}</div>
     </div>
-    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:18px 20px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#2563eb;margin-bottom:10px">A N A L Y S E D A T E N</div>
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px 18px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#2563eb;margin-bottom:9px">A N A L Y S E D A T E N</div>
       <table style="width:100%;border-collapse:collapse">
-        <tr><td style="font-size:12px;color:#475569;padding:5px 0">Analysedatum</td><td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right">${today}</td></tr>
-        <tr><td style="font-size:12px;color:#475569;padding:5px 0">Gesamtscore</td><td style="font-size:12px;font-weight:700;color:${scoreFarbe};text-align:right">${score !== null ? score + ' / 100' : '—'}</td></tr>
-        <tr><td style="font-size:12px;color:#475569;padding:5px 0">Bewertung</td><td style="font-size:12px;font-weight:700;color:${scoreFarbe};text-align:right">${scoreText}</td></tr>
+        <tr><td style="font-size:11.5px;color:#475569;padding:4px 0">Analysedatum</td><td style="font-size:11.5px;font-weight:700;color:#0f172a;text-align:right">${today}</td></tr>
+        <tr><td style="font-size:11.5px;color:#475569;padding:4px 0">SEO-Score</td><td style="font-size:11.5px;font-weight:700;color:${scoreFarbe};text-align:right">${score !== null ? score + ' / 100' : '—'}</td></tr>
+        <tr><td style="font-size:11.5px;color:#475569;padding:4px 0">Gesamtbewertung</td><td style="font-size:11.5px;font-weight:700;color:${scoreFarbe};text-align:right">${scoreText}</td></tr>
+        <tr><td style="font-size:11.5px;color:#475569;padding:4px 0">Kritische Punkte</td><td style="font-size:11.5px;font-weight:700;color:${kritisch>0?'#dc2626':'#16a34a'};text-align:right">${kritisch} gefunden</td></tr>
       </table>
     </div>
   </div>
 
-  <!-- TABELLE -->
-  <table style="width:100%;border-collapse:collapse;margin-bottom:28px">
+  <!-- ANALYSE-TABELLE -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;margin-bottom:8px">W E B S I T E - A N A L Y S E</div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:22px">
     <thead>
       <tr style="border-bottom:2px solid #e2e8f0">
-        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:left;padding-bottom:10px;width:28px">#</th>
-        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:left;padding-bottom:10px;width:200px">B E R E I C H</th>
-        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:left;padding-bottom:10px">B E F U N D</th>
-        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:right;padding-bottom:10px">S T A T U S</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:left;padding-bottom:8px;width:22px">#</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:left;padding-bottom:8px;width:185px">B E R E I C H</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:left;padding-bottom:8px">B E F U N D</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:right;padding-bottom:8px">S T A T U S</th>
       </tr>
     </thead>
     <tbody>${tabellenzeilen}</tbody>
   </table>
 
-  <!-- GESAMTBEWERTUNG -->
-  <div style="display:flex;justify-content:flex-end;margin-bottom:28px">
-    <div style="width:260px">
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0">
-        <span style="font-size:12.5px;color:#475569">SEO-Score</span>
-        <span style="font-size:12.5px;font-weight:700;color:#0f172a">${score !== null ? score + ' / 100' : '—'}</span>
+  <!-- SCORE-ÜBERSICHT -->
+  <div style="display:flex;justify-content:flex-end;margin-bottom:22px">
+    <div style="width:255px">
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0">
+        <span style="font-size:12px;color:#475569">SEO-Score</span>
+        <span style="font-size:12px;font-weight:700;color:${scoreFarbe}">${score!==null?score+' / 100':'—'}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0">
-        <span style="font-size:12.5px;color:#475569">Mobile Score</span>
-        <span style="font-size:12.5px;font-weight:700;color:#0f172a">${mobile !== null ? mobile + ' / 100' : '—'}</span>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid #e2e8f0">
+        <span style="font-size:12px;color:#475569">Mobile Score</span>
+        <span style="font-size:12px;font-weight:700;color:${mobile!==null?(mobile<45?'#dc2626':mobile<70?'#ea580c':'#16a34a'):'#94a3b8'}">${mobile!==null?mobile+' / 100':'—'}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:2px solid #0f172a">
-        <span style="font-size:12.5px;color:#475569">Speed Score</span>
-        <span style="font-size:12.5px;font-weight:700;color:#0f172a">${speed !== null ? speed + ' / 100' : '—'}</span>
+      <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:2px solid #0f172a">
+        <span style="font-size:12px;color:#475569">Speed Score</span>
+        <span style="font-size:12px;font-weight:700;color:${speed!==null?(speed<45?'#dc2626':speed<70?'#ea580c':'#16a34a'):'#94a3b8'}">${speed!==null?speed+' / 100':'—'}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;padding:10px 0">
-        <span style="font-size:15px;font-weight:800;color:#0f172a">Gesamtscore</span>
-        <span style="font-size:15px;font-weight:800;color:${scoreFarbe}">${score !== null ? score + ' / 100' : '—'}</span>
+      <div style="display:flex;justify-content:space-between;padding:8px 0">
+        <span style="font-size:14px;font-weight:800;color:#0f172a">Gesamtscore</span>
+        <span style="font-size:14px;font-weight:800;color:${scoreFarbe}">${score!==null?score+' / 100':'—'}</span>
       </div>
     </div>
   </div>
 
-  <!-- HINWEIS-BOX -->
-  <div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:auto">
-    <div style="font-size:11.5px;font-weight:700;color:#2563eb;margin-bottom:6px">Hinweis</div>
-    <div style="font-size:12px;color:#475569;line-height:1.6">
-      Diese Auswertung basiert auf einer automatischen Erstanalyse der Website <strong>${escHtml(a.url)}</strong> vom ${today}.
-      Sie dient als Orientierung und ersetzt keine individuelle Beratung. Gerne bespreche ich die Ergebnisse persönlich mit Ihnen und zeige auf, wie wir Ihre Website gezielt verbessern können.
+  <!-- RECHTLICHE PFLICHTEN -->
+  <div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;margin-bottom:8px">R E C H T L I C H E &nbsp; P F L I C H T E N</div>
+  <table style="width:100%;border-collapse:collapse;margin-bottom:22px">
+    <thead>
+      <tr style="border-bottom:2px solid #e2e8f0">
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:left;padding-bottom:8px;width:185px">P F L I C H T</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:left;padding-bottom:8px">B E F U N D</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.08em;color:#94a3b8;text-align:right;padding-bottom:8px">S T A T U S</th>
+      </tr>
+    </thead>
+    <tbody>${rechtZeilen}</tbody>
+  </table>
+
+  <!-- ANGEBOT-BOX -->
+  <div style="background:#0f172a;border-radius:12px;padding:20px 24px;margin-bottom:auto;color:#fff">
+    <div style="font-size:13.5px;font-weight:800;margin-bottom:8px">Was wir für Sie tun können</div>
+    <p style="font-size:11.5px;opacity:.85;line-height:1.65;margin-bottom:14px">
+      Die oben aufgezeigten Schwachstellen sind lösbar. Fürst Software entwickelt professionelle Websites, die technisch einwandfrei, rechtssicher und in Google gut auffindbar sind. Wir kümmern uns um alle Punkte — von Impressum und Datenschutz bis zu SEO und mobilem Design.
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+      ${['HTTPS & Sicherheit inklusive','Impressum & Datenschutz korrekt','Mobile-First Design','Google-Optimierung (SEO)'].map(p=>`<div style="display:flex;align-items:center;gap:7px;font-size:11px;opacity:.9"><span style="width:16px;height:16px;min-width:16px;background:#2563eb;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px">✓</span>${p}</div>`).join('')}
+    </div>
+    <div style="font-size:11px;opacity:.6;padding-top:12px;border-top:1px solid rgba(255,255,255,.1)">
+      Fürst Software · mail@fuerst-software.com · +43 660 2593852 · www.fuerst-software.com
     </div>
   </div>
 
   <!-- FOOTER -->
-  <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center">
-    <div style="font-size:10.5px;color:#64748b;line-height:1.7">
+  <div style="margin-top:24px;padding-top:12px;border-top:1px solid #e2e8f0;text-align:center">
+    <div style="font-size:10px;color:#64748b;line-height:1.7">
       Fürst Software & Web Development · Florian Fürst · Wendlberg 11 · 5165 Berndorf bei Salzburg · Österreich · UID: ATU82527348 · Steuernummer: 932682784<br>
       mail@fuerst-software.com · +43 660 2593852 · www.fuerst-software.com
     </div>
-    <div style="font-size:11px;font-weight:600;color:#2563eb;margin-top:6px">Dieses Dokument wurde mit Fürst Firmensoftware erstellt.</div>
+    <div style="font-size:10.5px;font-weight:600;color:#2563eb;margin-top:5px">Dieses Dokument wurde mit Fürst Firmensoftware erstellt.</div>
   </div>
 
 </div>
-<script>window.onload = function(){ window.print(); }<\/script>
+<script>window.onload=function(){window.print()}<\/script>
 </body></html>`;
 }
 

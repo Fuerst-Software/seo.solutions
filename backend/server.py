@@ -1480,6 +1480,24 @@ def analyze_website():
     has_analytics = ("google-analytics.com" in html_lower or "gtag(" in html_lower or "googletagmanager.com" in html_lower)
     has_favicon   = soup.find("link", rel=lambda r: r and "icon" in " ".join(r if isinstance(r, list) else [r]).lower()) is not None
 
+    # ── Rechtliche Pflichtseiten ──────────────────────────────────────────
+    def _has_legal_link(keywords):
+        """Prüft ob ein Link oder sichtbarer Text die Keywords enthält."""
+        all_text = " ".join(a.get_text(strip=True).lower() + " " + a.get("href", "").lower()
+                            for a in soup.find_all("a", href=True))
+        page_text = soup.get_text(" ", strip=True).lower()
+        return any(kw in all_text or kw in page_text for kw in keywords)
+
+    has_impressum   = _has_legal_link(["impressum", "legal notice", "legal", "contact/imprint"])
+    has_datenschutz = _has_legal_link(["datenschutz", "datenschutzerklärung", "privacy", "dsgvo", "gdpr", "datenschutzrichtlinie"])
+    has_agb         = _has_legal_link(["agb", "allgemeine geschäftsbedingungen", "nutzungsbedingungen", "terms", "conditions"])
+    has_cookie_banner = any(x in html_lower for x in [
+        "cookiebot", "cookieconsent", "onetrust", "cookie-consent",
+        "cookie_consent", "cc-banner", "cookie-banner", "cookie notice",
+        "cookie hinweis", "cookies akzeptieren", "cookies zustimmen",
+        "wir verwenden cookies", "diese website verwendet cookies",
+    ])
+
     # ── SEO Score (0-100) ─────────────────────────────────────────────────
     seo = 0
     if https:               seo += 12
@@ -1564,6 +1582,9 @@ def analyze_website():
     if broken_links_count > 0: recs.append(f"{broken_links_count} defekte Links gefunden")
     if not has_analytics:    recs.append("Kein Web-Tracking (Google Analytics / GTM)")
     if robots_blocked:       recs.append("Seite per noindex von der Google-Indexierung ausgeschlossen")
+    if not has_impressum:    recs.append("Kein Impressum gefunden — gesetzlich vorgeschrieben")
+    if not has_datenschutz:  recs.append("Keine Datenschutzerklärung gefunden — DSGVO-Pflicht")
+    if not has_cookie_banner: recs.append("Kein Cookie-Hinweis gefunden — DSGVO-Pflicht")
 
     return jsonify({
         # Basis
@@ -1602,6 +1623,11 @@ def analyze_website():
         "jsFiles":         js_files,
         "cssFiles":        css_files,
         "technologies":    detect_technologies(html, soup),
+        # Rechtliches
+        "hasImpressum":    has_impressum,
+        "hasDatenschutz":  has_datenschutz,
+        "hasAgb":          has_agb,
+        "hasCookieBanner": has_cookie_banner,
         # Empfehlungen
         "recommendations": recs,
     })
