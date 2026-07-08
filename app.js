@@ -20,6 +20,7 @@ const state = {
   stats: {},
   firmen: [],
   searchHistory: [],
+  analysen: [],
 };
 
 // Legacy-Helper (nur noch für Migration alter Daten)
@@ -319,6 +320,7 @@ const PAGE_TITLES = {
   search: 'Firmensuche',
   firmen: 'Meine Firmen',
   kontakte: 'Kontaktierte Firmen',
+  kundenbereich: 'Website Analyse',
   settings: 'Einstellungen',
 };
 
@@ -340,6 +342,7 @@ function renderPage(page) {
   if (page === 'search') renderSearchPage();
   if (page === 'firmen') renderFirmenPage();
   if (page === 'kontakte') renderKontaktePage();
+  if (page === 'kundenbereich') renderKundenbereich();
 }
 
 // =====================================================================
@@ -913,6 +916,431 @@ function addBusinessAsWebsite(biz) {
   state.websites.push(w);
   addActivity({ title: `Website "${w.name}" hinzugefügt`, meta: w.url, status: 'success', color: '#087a43' });
   showToast(`"${w.name}" als Website hinzugefügt!`, 'success');
+}
+
+// =====================================================================
+// KUNDENBEREICH — WEBSITE ANALYSEN API
+// =====================================================================
+async function apiAnalysenLoad() {
+  try {
+    const r = await fetch(API_BASE + '/api/analysen');
+    state.analysen = await r.json();
+  } catch (e) { state.analysen = []; }
+  updateAnalysenBadge();
+}
+
+async function apiAnalyseCreate(a) {
+  const r = await fetch(API_BASE + '/api/analysen', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(a),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function apiAnalyseUpdate(id, patch) {
+  const r = await fetch(API_BASE + '/api/analysen/' + id, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  });
+  return r.json();
+}
+
+async function apiAnalyseDelete(id) {
+  await fetch(API_BASE + '/api/analysen/' + id, { method: 'DELETE' });
+}
+
+function updateAnalysenBadge() {
+  const neu = state.analysen.filter(a => a.status === 'neu').length;
+  const b = $('navBadgeAnalysen');
+  if (!b) return;
+  b.textContent = neu;
+  b.style.display = neu > 0 ? '' : 'none';
+}
+
+// =====================================================================
+// KUNDENBEREICH — SEITE
+// =====================================================================
+let _analyseView = null; // null = Liste, ID = Detailansicht
+
+function renderKundenbereich() {
+  updateAnalysenBadge();
+  const container = $('kundenbereichContent');
+  if (!container) return;
+
+  if (_analyseView) {
+    const a = state.analysen.find(x => x.id === _analyseView);
+    if (a) { container.innerHTML = renderAnalyseDetail(a); return; }
+    _analyseView = null;
+  }
+
+  const neu      = state.analysen.filter(a => a.status === 'neu').length;
+  const fertig   = state.analysen.filter(a => a.status === 'fertig').length;
+
+  const cards = state.analysen.length
+    ? state.analysen.map(a => renderAnalyseCard(a)).join('')
+    : `<div class="empty-state" style="padding:40px">
+        <svg viewBox="0 0 24 24"><path d="M9 11.75A1.25 1.25 0 1 0 9 14.25 1.25 1.25 0 0 0 9 11.75zm6 0a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>
+        <h4>Noch keine Anfragen</h4>
+        <p>Füge die erste Kundenanfrage manuell hinzu.</p>
+       </div>`;
+
+  container.innerHTML = `
+    <div class="page-header">
+      <div class="page-header-left">
+        <div class="section-label">
+          <svg viewBox="0 0 24 24" style="width:11px;height:11px;fill:currentColor"><path d="M9 11.75A1.25 1.25 0 1 0 9 14.25zm6 0a1.25 1.25 0 1 0 0 2.5zm-3-9.75C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8 0-.29.02-.58.05-.86 2.36-1.05 4.23-2.98 5.21-5.37C11.07 8.33 14.05 10 17.42 10c.78 0 1.53-.09 2.25-.26.21.71.33 1.47.33 2.26 0 4.41-3.59 8-8 8z"/></svg>
+          Kundenbereich
+        </div>
+        <h1>Website Analyse</h1>
+        <p>Anfragen aus dem Gratis-Analyse-Formular — auswerten und Bericht erstellen.</p>
+      </div>
+      <button class="btn btn-primary" onclick="showAddAnalyseModal()">
+        <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        Neue Anfrage
+      </button>
+    </div>
+
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+      <div class="stat-card">
+        <div class="stat-icon blue"><svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></div>
+        <div class="stat-body"><span class="stat-value">${state.analysen.length}</span><span class="stat-label">Gesamt</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon orange"><svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg></div>
+        <div class="stat-body"><span class="stat-value">${neu}</span><span class="stat-label">Neu / Offen</span></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon green"><svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg></div>
+        <div class="stat-body"><span class="stat-value">${fertig}</span><span class="stat-label">Fertig</span></div>
+      </div>
+    </div>
+
+    <div id="analysenList">${cards}</div>
+
+    <!-- Modal: Neue Anfrage -->
+    <div id="addAnalyseModal" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,0.5);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:20px">
+      <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:16px;padding:24px;width:100%;max-width:480px;box-shadow:var(--shadow-pop)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <h3 style="color:var(--ink)">Neue Kundenanfrage</h3>
+          <button onclick="$('addAnalyseModal').style.display='none'" style="background:none;border:none;font-size:22px;color:var(--muted);cursor:pointer">×</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Website-URL *</label>
+          <input class="form-input" id="newAnalyseUrl" type="url" placeholder="https://www.kundenwebsite.at" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kundenname</label>
+          <input class="form-input" id="newAnalyseName" placeholder="z.B. Mustermann GmbH" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">E-Mail des Kunden</label>
+          <input class="form-input" id="newAnalyseEmail" type="email" placeholder="kunde@beispiel.at" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Anliegen / Wunsch des Kunden</label>
+          <textarea class="form-input" id="newAnalyseMsg" rows="3" placeholder="z.B. mehr Google-Sichtbarkeit, bessere Ladezeit..."></textarea>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:4px">
+          <button class="btn btn-secondary" onclick="$('addAnalyseModal').style.display='none'">Abbrechen</button>
+          <button class="btn btn-primary" onclick="saveNewAnalyse()">Speichern & Analyse starten</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderAnalyseCard(a) {
+  const statusColors = { neu: '#ea580c', laufend: '#3b82f6', fertig: '#16a34a' };
+  const statusLabels = { neu: 'Neu', laufend: 'In Bearbeitung', fertig: 'Fertig' };
+  const color = statusColors[a.status] || '#8b90a0';
+  const label = statusLabels[a.status] || a.status;
+  return `<div class="website-item" style="cursor:pointer" onclick="_analyseView='${escAttr(a.id)}';renderKundenbereich()">
+    <div style="width:44px;height:44px;border-radius:10px;background:${color};color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0">
+      ${escHtml((a.name || a.url || '?')[0].toUpperCase())}
+    </div>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <strong style="font-size:14px;color:var(--ink)">${escHtml(a.name || a.url)}</strong>
+        <span class="badge" style="background:${color}20;color:${color};border-color:${color}40">${label}</span>
+        ${a.result ? `<span class="badge badge-blue">Bericht bereit</span>` : ''}
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:3px">${escHtml(a.url || '')}</div>
+      ${a.email ? `<div style="font-size:12px;color:var(--muted)">${IC.mail} ${escHtml(a.email)}</div>` : ''}
+      ${a.message ? `<div style="font-size:12px;color:var(--text);margin-top:4px;font-style:italic">"${escHtml(a.message.slice(0,80))}${a.message.length>80?'…':''}"</div>` : ''}
+      <div style="font-size:11px;color:var(--faint);margin-top:4px">${fmtDate(a.createdAt)}</div>
+    </div>
+    <div class="card-actions" onclick="event.stopPropagation()">
+      <button class="btn btn-sm btn-primary" onclick="_analyseView='${escAttr(a.id)}';renderKundenbereich()">
+        ${a.result ? 'Bericht ansehen' : 'Analyse starten'}
+      </button>
+      <button class="btn btn-sm btn-danger" onclick="deleteAnalyse('${escAttr(a.id)}')">Löschen</button>
+    </div>
+  </div>`;
+}
+
+function renderAnalyseDetail(a) {
+  const hasResult = !!a.result;
+  const reportHtml = hasResult ? generateKundenBericht(a) : '';
+
+  return `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+      <button class="btn btn-secondary btn-sm" onclick="_analyseView=null;renderKundenbereich()">
+        <svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        Zurück
+      </button>
+      <h2 style="color:var(--ink);margin:0">${escHtml(a.name || a.url)}</h2>
+      <span class="badge ${a.status==='fertig'?'badge-success':a.status==='laufend'?'badge-blue':'badge-pending'}">${a.status==='fertig'?'Fertig':a.status==='laufend'?'In Bearbeitung':'Neu'}</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+      <div class="card" style="padding:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Anfrage-Details</div>
+        <div style="font-size:13px;color:var(--text);display:flex;flex-direction:column;gap:6px">
+          <div>${IC.globe} <a href="${escAttr(a.url)}" target="_blank" style="color:var(--blue)">${escHtml(a.url)}</a></div>
+          ${a.name ? `<div>${IC.pin} ${escHtml(a.name)}</div>` : ''}
+          ${a.email ? `<div>${IC.mail} ${escHtml(a.email)}</div>` : ''}
+          <div style="color:var(--faint);font-size:11px">Eingegangen: ${fmtDate(a.createdAt)}</div>
+        </div>
+      </div>
+      <div class="card" style="padding:16px">
+        <div style="font-size:11px;font-weight:600;text-transform:uppercase;color:var(--muted);margin-bottom:10px">Kundenwunsch</div>
+        <div style="font-size:13px;color:var(--text);font-style:italic">"${escHtml(a.message || '—')}"</div>
+      </div>
+    </div>
+
+    ${!hasResult ? `
+      <div class="card" style="padding:24px;text-align:center">
+        <div style="font-size:15px;font-weight:700;color:var(--ink);margin-bottom:8px">Website noch nicht analysiert</div>
+        <p style="color:var(--muted);margin-bottom:18px">Starte die SEO-Analyse für <strong>${escHtml(a.url)}</strong>.</p>
+        <button class="btn btn-primary btn-lg" id="startAnalyseBtn" onclick="startKundenAnalyse('${escAttr(a.id)}')">
+          <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+          Analyse jetzt starten
+        </button>
+      </div>
+    ` : `
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="startKundenAnalyse('${escAttr(a.id)}')">Neu analysieren</button>
+        <button class="btn btn-primary" onclick="printKundenBericht('${escAttr(a.id)}')">
+          <svg viewBox="0 0 24 24"><path d="M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3zm-3 11H8v-5h8v5zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1zm-1-9H6v4h12V3z"/></svg>
+          Bericht drucken / PDF
+        </button>
+      </div>
+      <div id="kundenBerichtContainer">${reportHtml}</div>
+    `}
+  `;
+}
+
+async function showAddAnalyseModal() {
+  const modal = $('addAnalyseModal');
+  if (modal) modal.style.display = 'flex';
+}
+
+async function saveNewAnalyse() {
+  const url   = $('newAnalyseUrl')?.value.trim();
+  const name  = $('newAnalyseName')?.value.trim();
+  const email = $('newAnalyseEmail')?.value.trim();
+  const msg   = $('newAnalyseMsg')?.value.trim();
+  if (!url) { showToast('Bitte URL eingeben.', 'error'); return; }
+
+  const a = { url, name, email, message: msg, status: 'neu' };
+  try {
+    const created = await apiAnalyseCreate(a);
+    state.analysen.unshift(created);
+    $('addAnalyseModal').style.display = 'none';
+    updateAnalysenBadge();
+    showToast('Anfrage gespeichert!', 'success');
+    _analyseView = created.id;
+    renderKundenbereich();
+    // Analyse direkt starten
+    startKundenAnalyse(created.id);
+  } catch (e) { showToast('Fehler: ' + e.message, 'error'); }
+}
+
+async function startKundenAnalyse(id) {
+  const a = state.analysen.find(x => x.id === id);
+  if (!a) return;
+
+  const btn = $('startAnalyseBtn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Analyse läuft...'; }
+
+  await apiAnalyseUpdate(id, { status: 'laufend' });
+  a.status = 'laufend';
+
+  try {
+    const r = await fetch(API_BASE + '/api/websites/analyze', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: a.url, discover: true }),
+    });
+    const data = await r.json();
+    const result = data.result || data;
+    await apiAnalyseUpdate(id, { status: 'fertig', result, analyzedAt: new Date().toISOString() });
+    a.status = 'fertig';
+    a.result = result;
+    a.analyzedAt = new Date().toISOString();
+    showToast('Analyse abgeschlossen!', 'success');
+    renderKundenbereich();
+  } catch (e) {
+    await apiAnalyseUpdate(id, { status: 'neu' });
+    a.status = 'neu';
+    showToast('Analyse fehlgeschlagen: ' + e.message, 'error');
+    renderKundenbereich();
+  }
+}
+
+async function deleteAnalyse(id) {
+  if (!confirm('Anfrage löschen?')) return;
+  state.analysen = state.analysen.filter(x => x.id !== id);
+  updateAnalysenBadge();
+  _analyseView = null;
+  renderKundenbereich();
+  await apiAnalyseDelete(id);
+}
+
+function generateKundenBericht(a) {
+  const r = a.result || {};
+  const score = typeof r.seoScore === 'number' ? r.seoScore : null;
+  const https = r.https;
+  const mobile = r.mobileScore;
+  const speed  = r.speedScore;
+  const title  = r.title;
+  const metaDesc = r.metaDescription;
+  const h1     = r.h1;
+  const hasSitemap = r.hasSitemap;
+  const hasRobots  = r.hasRobots;
+  const brokenLinks = r.brokenLinksCount || 0;
+
+  // Ampel-Bewertung
+  const rating = (val, gut, ok) => {
+    if (val === null || val === undefined) return 'grau';
+    if (typeof val === 'boolean') return val ? 'gruen' : 'rot';
+    if (val >= gut) return 'gruen';
+    if (val >= ok)  return 'gelb';
+    return 'rot';
+  };
+  const ampel = (r) => {
+    const c = r==='gruen'?'#16a34a':r==='gelb'?'#ea580c':'#dc2626';
+    const l = r==='gruen'?'Gut':r==='gelb'?'Verbesserungsbedarf':'Handlungsbedarf';
+    return `<span style="display:inline-flex;align-items:center;gap:5px;font-weight:700;color:${c}">
+      <span style="width:10px;height:10px;border-radius:50%;background:${c};flex-shrink:0"></span>${l}</span>`;
+  };
+
+  const scoreRating = rating(score, 70, 45);
+  const mobileRating = rating(mobile, 70, 45);
+  const speedRating  = rating(speed, 70, 45);
+  const httpsRating  = rating(https, true, true);
+
+  const bereiche = [
+    {
+      icon: '🔍', titel: 'Sichtbarkeit in Suchmaschinen (SEO)',
+      rating: scoreRating,
+      text: score !== null
+        ? `Ihre Website erreicht aktuell einen SEO-Score von ${score}/100. ${score < 50 ? 'Es gibt deutliche Schwachstellen, die dazu führen, dass Ihre Website in Google schwer gefunden wird.' : score < 70 ? 'Es sind einige wichtige Punkte offen, die Ihre Platzierung in Suchmaschinen verbessern würden.' : 'Ihre Website ist grundsätzlich gut aufgestellt, mit gezielten Maßnahmen lässt sich noch mehr herausholen.'}`
+        : 'Die SEO-Grundlagen konnten nicht vollständig geprüft werden.',
+      detail: [
+        title ? null : '→ Kein aussagekräftiger Seitentitel gefunden',
+        metaDesc ? null : '→ Meta-Beschreibung fehlt oder ist nicht optimiert',
+        h1 ? null : '→ Keine klare Hauptüberschrift (H1) vorhanden',
+        !hasSitemap ? '→ Sitemap nicht gefunden — erschwert die Indexierung' : null,
+      ].filter(Boolean),
+    },
+    {
+      icon: '📱', titel: 'Mobile Darstellung',
+      rating: mobileRating,
+      text: mobile !== null && mobile !== undefined
+        ? `${mobile < 50 ? 'Ihre Website hat auf Smartphones deutliche Darstellungsprobleme. Da über 60 % aller Besucher mobil surfen, verlieren Sie hier potenzielle Kunden.' : mobile < 70 ? 'Die mobile Darstellung ist vorhanden, aber noch nicht optimal. Einige Bereiche könnten für Smartphone-Nutzer verbessert werden.' : 'Die Website zeigt sich auf mobilen Geräten gut. Kleinere Optimierungen könnten das Erlebnis noch weiter verbessern.'}`
+        : 'Die mobile Darstellung konnte nicht vollständig bewertet werden.',
+      detail: [],
+    },
+    {
+      icon: '⚡', titel: 'Ladegeschwindigkeit',
+      rating: speedRating,
+      text: speed !== null && speed !== undefined
+        ? `${speed < 50 ? 'Die Website lädt langsam. Studien zeigen: Jede Sekunde Ladezeit kostet Besucher und senkt die Conversion-Rate messbar.' : speed < 70 ? 'Die Ladezeit ist akzeptabel, aber es gibt Optimierungspotenzial. Schnellere Seiten ranken in Google besser und konvertieren mehr Besucher.' : 'Die Ladegeschwindigkeit ist gut. Mit weiterer Optimierung bleibt die Website auch bei wachsendem Traffic performant.'}`
+        : 'Die Ladegeschwindigkeit konnte nicht gemessen werden.',
+      detail: [],
+    },
+    {
+      icon: '🔒', titel: 'Sicherheit & Vertrauen',
+      rating: httpsRating,
+      text: https
+        ? 'Ihre Website ist mit HTTPS verschlüsselt — ein wichtiges Vertrauenssignal für Besucher und Suchmaschinen.'
+        : 'Ihre Website läuft ohne HTTPS-Verschlüsselung. Das wirkt auf Besucher unseriös und wird von Google negativ bewertet.',
+      detail: brokenLinks > 0 ? [`→ ${brokenLinks} defekte Links gefunden — negative Auswirkung auf Nutzerfreundlichkeit und SEO`] : [],
+    },
+  ];
+
+  const bereicheHtml = bereiche.map(b => `
+    <div style="border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:12px;background:var(--card-bg)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:15px;font-weight:700;color:var(--ink)">${b.icon} ${b.titel}</div>
+        ${ampel(b.rating)}
+      </div>
+      <p style="font-size:13.5px;color:var(--text);line-height:1.6;margin:0 0 ${b.detail.length?'10px':'0'}">${b.text}</p>
+      ${b.detail.length ? `<div style="font-size:12.5px;color:var(--muted);display:flex;flex-direction:column;gap:3px">${b.detail.map(d=>`<div>${d}</div>`).join('')}</div>` : ''}
+    </div>
+  `).join('');
+
+  return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:720px" id="druckBericht">
+
+      <!-- Kopf -->
+      <div style="background:linear-gradient(135deg,#1e3a8a 0%,#2563eb 100%);border-radius:16px;padding:28px 28px 24px;margin-bottom:20px;color:#fff">
+        <div style="font-size:12px;font-weight:600;opacity:.75;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Gratis Website-Analyse</div>
+        <div style="font-size:22px;font-weight:800;margin-bottom:4px">${escHtml(a.name || new URL(a.url).hostname)}</div>
+        <div style="font-size:13px;opacity:.8">${escHtml(a.url)}</div>
+        ${score !== null ? `
+          <div style="margin-top:18px;display:flex;align-items:center;gap:14px">
+            <div style="width:60px;height:60px;border-radius:50%;background:rgba(255,255,255,.15);border:3px solid rgba(255,255,255,.4);display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:900">${score}</div>
+            <div>
+              <div style="font-size:13px;opacity:.75">Gesamt-Score</div>
+              <div style="font-size:16px;font-weight:700">${score < 40 ? 'Dringender Handlungsbedarf' : score < 65 ? 'Verbesserungsbedarf' : score < 80 ? 'Solide Basis' : 'Gut aufgestellt'}</div>
+            </div>
+          </div>
+        ` : ''}
+      </div>
+
+      <!-- Einleitung -->
+      <div style="background:var(--soft-bg);border-radius:12px;padding:16px 18px;margin-bottom:18px;font-size:13.5px;color:var(--text);line-height:1.65;border-left:3px solid #2563eb">
+        Wir haben Ihre Website einer ersten automatischen Prüfung unterzogen. Die folgende Auswertung gibt Ihnen einen Überblick über die wichtigsten Bereiche — und zeigt auf, wo gezielter Handlungsbedarf besteht.
+      </div>
+
+      <!-- Bereiche -->
+      ${bereicheHtml}
+
+      <!-- Angebot -->
+      <div style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);border-radius:16px;padding:24px 28px;margin-top:22px;color:#fff">
+        <div style="font-size:16px;font-weight:800;margin-bottom:10px">Was wir für Sie tun können</div>
+        <p style="font-size:13.5px;opacity:.85;line-height:1.65;margin:0 0 16px">
+          Bei Fürst Software entwickeln wir professionelle Websites, die nicht nur gut aussehen — sondern auch gefunden werden und Anfragen generieren. Wir übernehmen SEO-Optimierung, schnelle Ladezeiten, mobile Darstellung und technische Sicherheit als Standard.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:18px">
+          ${['Professionelles Webdesign','SEO-Grundoptimierung inklusive','Schnelle Ladezeiten','Mobile-First Entwicklung'].map(p=>`
+            <div style="display:flex;align-items:center;gap:8px;font-size:13px;opacity:.9">
+              <span style="width:18px;height:18px;background:#2563eb;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px">✓</span>${p}
+            </div>`).join('')}
+        </div>
+        <div style="padding-top:14px;border-top:1px solid rgba(255,255,255,.12);font-size:13px;opacity:.7">
+          Fürst Software · fuerst-software.com · office@fuerst-software.com
+        </div>
+      </div>
+
+      <div style="font-size:11px;color:var(--faint);margin-top:12px;text-align:center">
+        Erstellt am ${new Date().toLocaleDateString('de-AT')} · Automatische Erstanalyse — kein Ersatz für eine individuelle Beratung
+      </div>
+    </div>
+  `;
+}
+
+function printKundenBericht(id) {
+  const bericht = $('druckBericht');
+  if (!bericht) return;
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Website-Analyse</title>
+    <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:30px;background:#fff;color:#1a1a2e}
+    @media print{body{padding:0}}</style></head><body>${bericht.outerHTML}
+    <script>window.print();<\/script></body></html>`);
+  w.document.close();
 }
 
 // =====================================================================
@@ -2026,7 +2454,7 @@ async function init() {
   initRangeTracks();
   renderDashboard(); // sofort rendern (noch leer)
   // Alles parallel vom Server laden
-  await Promise.all([apiStateLoad(), apiFirmenLoad()]);
+  await Promise.all([apiStateLoad(), apiFirmenLoad(), apiAnalysenLoad()]);
   loadSettings();    // Settings-Felder befüllen nachdem State geladen
   renderDashboard(); // mit echten Daten neu rendern
   updateFirmenBadge();

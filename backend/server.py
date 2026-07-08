@@ -2606,6 +2606,56 @@ def delete_firma(firma_id):
     return jsonify({"ok": True})
 
 
+# ===== WEBSITE ANALYSEN (Kundenbereich) =====
+
+_analysen_lock = threading.Lock()
+
+def _read_analysen() -> list:
+    db = read_db()
+    return db.get("analysen", [])
+
+def _write_analysen(lst: list):
+    with _analysen_lock:
+        db = read_db()
+        db["analysen"] = lst
+        write_db(db)
+
+@app.get("/api/analysen")
+def get_analysen():
+    return jsonify(_read_analysen())
+
+@app.post("/api/analysen")
+def create_analyse():
+    a = request.get_json() or {}
+    a["id"]        = a.get("id") or gen_id()
+    a["createdAt"] = a.get("createdAt") or now_iso()
+    a["status"]    = a.get("status", "neu")   # neu | laufend | fertig
+    lst = _read_analysen()
+    lst.insert(0, a)
+    _write_analysen(lst)
+    return jsonify(a), 201
+
+@app.put("/api/analysen/<analyse_id>")
+def update_analyse(analyse_id):
+    patch = request.get_json() or {}
+    lst = _read_analysen()
+    for a in lst:
+        if a.get("id") == analyse_id:
+            a.update(patch)
+            _write_analysen(lst)
+            return jsonify(a)
+    return jsonify({"error": "not_found"}), 404
+
+@app.delete("/api/analysen/<analyse_id>")
+def delete_analyse(analyse_id):
+    lst = _read_analysen()
+    new = [a for a in lst if a.get("id") != analyse_id]
+    if len(new) == len(lst):
+        return jsonify({"error": "not_found"}), 404
+    _write_analysen(new)
+    return jsonify({"ok": True})
+
+
 # ===== SERVER-SIDE STATE (settings / stats / activities / searchHistory) =====
 
 _state_lock = threading.Lock()
