@@ -1333,14 +1333,234 @@ function generateKundenBericht(a) {
 }
 
 function printKundenBericht(id) {
-  const bericht = $('druckBericht');
-  if (!bericht) return;
+  const a = state.analysen.find(x => x.id === id);
+  if (!a || !a.result) return;
+  const html = buildAnalysePdfHtml(a);
   const w = window.open('', '_blank');
-  w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Website-Analyse</title>
-    <style>body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:30px;background:#fff;color:#1a1a2e}
-    @media print{body{padding:0}}</style></head><body>${bericht.outerHTML}
-    <script>window.print();<\/script></body></html>`);
+  w.document.write(html);
   w.document.close();
+}
+
+function buildAnalysePdfHtml(a) {
+  const r = a.result || {};
+  const score     = typeof r.seoScore === 'number' ? r.seoScore : null;
+  const https     = r.https;
+  const mobile    = typeof r.mobileScore === 'number' ? r.mobileScore : null;
+  const speed     = typeof r.speedScore  === 'number' ? r.speedScore  : null;
+  const title     = r.title;
+  const metaDesc  = r.metaDescription;
+  const h1        = r.h1;
+  const hasSitemap   = r.hasSitemap;
+  const hasRobots    = r.hasRobots;
+  const brokenLinks  = r.brokenLinksCount || 0;
+  const today     = new Date().toLocaleDateString('de-AT', { day:'2-digit', month:'2-digit', year:'numeric' });
+  const hostname  = (() => { try { return new URL(a.url).hostname; } catch { return a.url; } })();
+
+  const rating = (val, gut, ok) => {
+    if (val === null || val === undefined) return null;
+    if (typeof val === 'boolean') return val ? 'gut' : 'schlecht';
+    if (val >= gut) return 'gut';
+    if (val >= ok)  return 'mittel';
+    return 'schlecht';
+  };
+  const badge = (r) => {
+    if (!r) return '<span style="background:#f1f5f9;color:#64748b;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">Nicht verfügbar</span>';
+    const c = r==='gut'?'#dcfce7':r==='mittel'?'#fff7ed':'#fee2e2';
+    const t = r==='gut'?'#16a34a':r==='mittel'?'#ea580c':'#dc2626';
+    const l = r==='gut'?'Gut':r==='mittel'?'Verbesserungsbedarf':'Handlungsbedarf';
+    return `<span style="background:${c};color:${t};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">${l}</span>`;
+  };
+
+  const scoreRating  = rating(score, 70, 45);
+  const mobileRating = rating(mobile, 70, 45);
+  const speedRating  = rating(speed, 70, 45);
+  const httpsRating  = https === true ? 'gut' : https === false ? 'schlecht' : null;
+
+  // Score-Farbe für den großen Kreis
+  const scoreFarbe = !scoreRating ? '#94a3b8' : scoreRating==='gut' ? '#16a34a' : scoreRating==='mittel' ? '#ea580c' : '#dc2626';
+  const scoreText  = !score ? '—' : score < 40 ? 'Kritisch' : score < 60 ? 'Schwach' : score < 75 ? 'Ausbaufähig' : 'Solide';
+
+  // Analyse-Zeilen für die Tabelle
+  const rows = [
+    {
+      nr: 1,
+      bereich: 'Suchmaschinen-Sichtbarkeit (SEO)',
+      bewertung: score !== null
+        ? (score < 50
+          ? `Score ${score}/100 — Ihre Website wird in Google kaum gefunden. Grundlegende SEO-Elemente fehlen oder sind nicht optimiert.`
+          : score < 70
+          ? `Score ${score}/100 — Die Website ist suchmaschinenfreundlich aufgebaut, jedoch gibt es offene Punkte, die Ihre Platzierung spürbar verbessern würden.`
+          : `Score ${score}/100 — Gute SEO-Basis. Mit gezielten Maßnahmen lässt sich die Sichtbarkeit weiter steigern.`)
+        : 'SEO-Grunddaten konnten nicht vollständig ermittelt werden.',
+      hinweise: [
+        !title    ? 'Seitentitel fehlt oder ist nicht aussagekräftig'        : null,
+        !metaDesc ? 'Meta-Beschreibung fehlt (wird in Suchergebnissen angezeigt)' : null,
+        !h1       ? 'Keine Hauptüberschrift (H1) gefunden'                   : null,
+        !hasSitemap ? 'Keine Sitemap vorhanden — erschwert die Indexierung'  : null,
+        !hasRobots  ? 'Keine robots.txt gefunden'                            : null,
+      ].filter(Boolean),
+      status: scoreRating,
+    },
+    {
+      nr: 2,
+      bereich: 'Mobile Darstellung',
+      bewertung: mobile !== null
+        ? (mobile < 50
+          ? `Score ${mobile}/100 — Die Website hat auf Smartphones deutliche Darstellungsprobleme. Über 60 % aller Nutzer surfen mobil — hier verlieren Sie Besucher.`
+          : mobile < 70
+          ? `Score ${mobile}/100 — Die mobile Ansicht ist vorhanden, aber nicht optimal. Einige Bereiche könnten für Smartphone-Nutzer verbessert werden.`
+          : `Score ${mobile}/100 — Die Website stellt sich auf mobilen Geräten gut dar.`)
+        : 'Mobile Darstellung konnte nicht bewertet werden.',
+      hinweise: [],
+      status: mobileRating,
+    },
+    {
+      nr: 3,
+      bereich: 'Ladegeschwindigkeit',
+      bewertung: speed !== null
+        ? (speed < 50
+          ? `Score ${speed}/100 — Die Website lädt langsam. Jede zusätzliche Sekunde Ladezeit senkt die Anzahl der Besucher nachweislich.`
+          : speed < 70
+          ? `Score ${speed}/100 — Die Ladezeit ist akzeptabel, Optimierungspotenzial ist vorhanden. Schnellere Seiten ranken in Google besser.`
+          : `Score ${speed}/100 — Die Ladegeschwindigkeit ist gut.`)
+        : 'Ladegeschwindigkeit konnte nicht gemessen werden.',
+      hinweise: [],
+      status: speedRating,
+    },
+    {
+      nr: 4,
+      bereich: 'Sicherheit & Verschlüsselung (HTTPS)',
+      bewertung: https === true
+        ? 'Die Website ist mit HTTPS verschlüsselt — ein wichtiges Vertrauenssignal für Besucher und Suchmaschinen.'
+        : https === false
+        ? 'Die Website verwendet keine HTTPS-Verschlüsselung. Browser markieren solche Seiten als "Nicht sicher", was Besucher abschreckt und von Google negativ bewertet wird.'
+        : 'HTTPS-Status konnte nicht geprüft werden.',
+      hinweise: brokenLinks > 0 ? [`${brokenLinks} defekte Links gefunden — beeinträchtigt Nutzerfreundlichkeit und SEO`] : [],
+      status: httpsRating,
+    },
+  ];
+
+  const tabellenzeilen = rows.map(row => `
+    <tr style="border-bottom:1px solid #e2e8f0;vertical-align:top">
+      <td style="padding:14px 10px 14px 0;font-size:12px;color:#64748b;width:28px;white-space:nowrap">${row.nr}</td>
+      <td style="padding:14px 14px 14px 0;width:200px">
+        <div style="font-size:12.5px;font-weight:700;color:#0f172a;margin-bottom:4px">${row.bereich}</div>
+        ${row.hinweise.length ? `<div style="margin-top:6px">${row.hinweise.map(h=>`<div style="font-size:11px;color:#ea580c;margin-bottom:2px">→ ${h}</div>`).join('')}</div>` : ''}
+      </td>
+      <td style="padding:14px 0;font-size:12px;color:#334155;line-height:1.55">${row.bewertung}</td>
+      <td style="padding:14px 0 14px 14px;text-align:right;white-space:nowrap">${badge(row.status)}</td>
+    </tr>
+  `).join('');
+
+  const logoSvg = `<svg width="52" height="52" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+    <rect width="100" height="100" rx="22" fill="#2563EB"/>
+    <rect x="18" y="24" width="64" height="14" rx="7" fill="white"/>
+    <rect x="18" y="44" width="48" height="14" rx="7" fill="white"/>
+    <rect x="18" y="64" width="30" height="14" rx="7" fill="white"/>
+  </svg>`;
+
+  return `<!DOCTYPE html><html lang="de"><head>
+<meta charset="UTF-8">
+<title>Website Analyse Auswertung — ${escHtml(hostname)}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; background:#fff; color:#0f172a; font-size:13px; }
+  .page { max-width:794px; margin:0 auto; padding:40px 48px 32px; min-height:1123px; position:relative; display:flex; flex-direction:column; }
+  @media print {
+    body { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .page { padding:32px 48px 28px; }
+    @page { size:A4; margin:0; }
+  }
+</style>
+</head><body><div class="page">
+
+  <!-- HEADER -->
+  <div style="text-align:center;padding-bottom:20px;border-bottom:1.5px solid #e2e8f0;margin-bottom:28px">
+    ${logoSvg}
+    <div style="font-size:20px;font-weight:800;color:#0f172a;margin-top:10px">Fürst Software & Web Development</div>
+    <div style="font-size:11px;color:#64748b;margin-top:3px">Florian Fürst · Wendlberg 11 · 5165 Berndorf bei Salzburg · Österreich</div>
+  </div>
+
+  <!-- TITEL -->
+  <div style="text-align:right;margin-bottom:28px">
+    <div style="font-size:36px;font-weight:900;color:#0f172a;letter-spacing:-0.5px">Website Analyse</div>
+    <div style="font-size:36px;font-weight:900;color:#0f172a;letter-spacing:-0.5px">Auswertung</div>
+  </div>
+
+  <!-- INFO-BOXEN -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:32px">
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:18px 20px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#2563eb;margin-bottom:10px">K U N D E</div>
+      <div style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:8px">${escHtml(a.name || hostname)}</div>
+      ${a.email ? `<div style="font-size:12px;color:#475569;margin-top:4px">${escHtml(a.email)}</div>` : ''}
+      <div style="font-size:12px;color:#475569;margin-top:4px">${escHtml(a.url)}</div>
+    </div>
+    <div style="border:1px solid #e2e8f0;border-radius:10px;padding:18px 20px">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;color:#2563eb;margin-bottom:10px">A N A L Y S E D A T E N</div>
+      <table style="width:100%;border-collapse:collapse">
+        <tr><td style="font-size:12px;color:#475569;padding:5px 0">Analysedatum</td><td style="font-size:12px;font-weight:700;color:#0f172a;text-align:right">${today}</td></tr>
+        <tr><td style="font-size:12px;color:#475569;padding:5px 0">Gesamtscore</td><td style="font-size:12px;font-weight:700;color:${scoreFarbe};text-align:right">${score !== null ? score + ' / 100' : '—'}</td></tr>
+        <tr><td style="font-size:12px;color:#475569;padding:5px 0">Bewertung</td><td style="font-size:12px;font-weight:700;color:${scoreFarbe};text-align:right">${scoreText}</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- TABELLE -->
+  <table style="width:100%;border-collapse:collapse;margin-bottom:28px">
+    <thead>
+      <tr style="border-bottom:2px solid #e2e8f0">
+        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:left;padding-bottom:10px;width:28px">#</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:left;padding-bottom:10px;width:200px">B E R E I C H</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:left;padding-bottom:10px">B E F U N D</th>
+        <th style="font-size:10px;font-weight:700;letter-spacing:.1em;color:#2563eb;text-align:right;padding-bottom:10px">S T A T U S</th>
+      </tr>
+    </thead>
+    <tbody>${tabellenzeilen}</tbody>
+  </table>
+
+  <!-- GESAMTBEWERTUNG -->
+  <div style="display:flex;justify-content:flex-end;margin-bottom:28px">
+    <div style="width:260px">
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0">
+        <span style="font-size:12.5px;color:#475569">SEO-Score</span>
+        <span style="font-size:12.5px;font-weight:700;color:#0f172a">${score !== null ? score + ' / 100' : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #e2e8f0">
+        <span style="font-size:12.5px;color:#475569">Mobile Score</span>
+        <span style="font-size:12.5px;font-weight:700;color:#0f172a">${mobile !== null ? mobile + ' / 100' : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:2px solid #0f172a">
+        <span style="font-size:12.5px;color:#475569">Speed Score</span>
+        <span style="font-size:12.5px;font-weight:700;color:#0f172a">${speed !== null ? speed + ' / 100' : '—'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0">
+        <span style="font-size:15px;font-weight:800;color:#0f172a">Gesamtscore</span>
+        <span style="font-size:15px;font-weight:800;color:${scoreFarbe}">${score !== null ? score + ' / 100' : '—'}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- HINWEIS-BOX -->
+  <div style="border:1px solid #e2e8f0;border-radius:10px;padding:16px 20px;margin-bottom:auto">
+    <div style="font-size:11.5px;font-weight:700;color:#2563eb;margin-bottom:6px">Hinweis</div>
+    <div style="font-size:12px;color:#475569;line-height:1.6">
+      Diese Auswertung basiert auf einer automatischen Erstanalyse der Website <strong>${escHtml(a.url)}</strong> vom ${today}.
+      Sie dient als Orientierung und ersetzt keine individuelle Beratung. Gerne bespreche ich die Ergebnisse persönlich mit Ihnen und zeige auf, wie wir Ihre Website gezielt verbessern können.
+    </div>
+  </div>
+
+  <!-- FOOTER -->
+  <div style="margin-top:32px;padding-top:14px;border-top:1px solid #e2e8f0;text-align:center">
+    <div style="font-size:10.5px;color:#64748b;line-height:1.7">
+      Fürst Software & Web Development · Florian Fürst · Wendlberg 11 · 5165 Berndorf bei Salzburg · Österreich · UID: ATU82527348 · Steuernummer: 932682784<br>
+      mail@fuerst-software.com · +43 660 2593852 · www.fuerst-software.com
+    </div>
+    <div style="font-size:11px;font-weight:600;color:#2563eb;margin-top:6px">Dieses Dokument wurde mit Fürst Firmensoftware erstellt.</div>
+  </div>
+
+</div>
+<script>window.onload = function(){ window.print(); }<\/script>
+</body></html>`;
 }
 
 // =====================================================================
