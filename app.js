@@ -1592,7 +1592,7 @@ function buildAnalysePdfHtml(a) {
   </div>
 
   <!-- TITEL -->
-  <div style="text-align:right;margin-bottom:24px">
+  <div style="text-align:center;margin-bottom:24px">
     <div style="font-size:34px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;line-height:1.1">Website Analyse</div>
     <div style="font-size:34px;font-weight:900;color:#0f172a;letter-spacing:-0.5px;line-height:1.1">Auswertung</div>
   </div>
