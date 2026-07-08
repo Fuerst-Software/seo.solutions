@@ -1344,6 +1344,42 @@ def search_businesses():
 
 # ===== WEBSITE SEO ANALYSIS =====
 
+def _check_url_exists(url, timeout=6):
+    """Gibt True zurück wenn URL erreichbar (Status < 400)."""
+    try:
+        r = requests.head(url, headers=SEARCH_HEADERS, timeout=timeout, allow_redirects=True)
+        if r.status_code == 405:
+            r = requests.get(url, headers=SEARCH_HEADERS, timeout=timeout, allow_redirects=True)
+        return r.status_code < 400
+    except Exception:
+        return False
+
+
+def _count_broken_links(soup, base_url, domain, sample=15):
+    """Prüft bis zu `sample` interne Links auf Erreichbarkeit."""
+    checked = 0
+    broken = 0
+    seen = set()
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        parsed = urlparse(href)
+        # nur interne Links
+        if parsed.netloc and parsed.netloc != domain:
+            continue
+        full = href if href.startswith("http") else base_url.rstrip("/") + "/" + href.lstrip("/")
+        if full in seen:
+            continue
+        seen.add(full)
+        if not _check_url_exists(full, timeout=5):
+            broken += 1
+        checked += 1
+        if checked >= sample:
+            break
+    return broken
+
+
 @app.post("/api/websites/analyze")
 def analyze_website():
     body = request.get_json() or {}
@@ -1354,107 +1390,221 @@ def analyze_website():
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
 
+    HDR = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"}
+
     try:
         start_time = time.time()
-        resp = requests.get(url, timeout=15, headers={
-            "User-Agent": "Mozilla/5.0 (compatible; SEOSolutionsBot/1.0)"
-        })
+        resp = requests.get(url, timeout=15, headers=HDR, allow_redirects=True)
         load_time = round(time.time() - start_time, 3)
         resp.raise_for_status()
     except requests.RequestException as e:
-        return jsonify({"error": f"Could not fetch URL: {str(e)}"}), 400
+        return jsonify({"error": f"Website nicht erreichbar: {str(e)}"}), 400
 
-    soup = BeautifulSoup(resp.text, "html.parser")
-    parsed_url = urlparse(url)
+    final_url = resp.url
+    https = final_url.startswith("https://")
+    html = resp.text
+    soup = BeautifulSoup(html, "html.parser")
+    parsed_url = urlparse(final_url)
     domain = parsed_url.netloc
+    base_url = f"{parsed_url.scheme}://{domain}"
 
-    # Title
+    # ── Parallel: Sitemap + Robots + Broken Links ──────────────────────────
+    def _check_sitemap():
+        return _check_url_exists(base_url + "/sitemap.xml") or _check_url_exists(base_url + "/sitemap_index.xml")
+
+    def _check_robots():
+        return _check_url_exists(base_url + "/robots.txt")
+
+    def _check_broken():
+        return _count_broken_links(soup, base_url, domain, sample=12)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        f_sitemap = pool.submit(_check_sitemap)
+        f_robots  = pool.submit(_check_robots)
+        f_broken  = pool.submit(_check_broken)
+        has_sitemap      = f_sitemap.result()
+        has_robots       = f_robots.result()
+        broken_links_count = f_broken.result()
+
+    # ── Title ──────────────────────────────────────────────────────────────
     title_tag = soup.find("title")
     title = title_tag.get_text(strip=True) if title_tag else ""
 
-    # Meta description
-    meta_desc_tag = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
-    meta_description = meta_desc_tag.get("content", "") if meta_desc_tag else ""
+    # ── Meta Description ───────────────────────────────────────────────────
+    meta_tag = soup.find("meta", attrs={"name": re.compile(r"^description$", re.I)})
+    meta_description = meta_tag.get("content", "").strip() if meta_tag else ""
 
-    # H1 tags
-    h1_tags = [h1.get_text(strip=True) for h1 in soup.find_all("h1")]
+    # ── H1 ────────────────────────────────────────────────────────────────
+    h1_tags = [h.get_text(strip=True) for h in soup.find_all("h1")]
+    h2_count = len(soup.find_all("h2"))
 
-    # Word count (visible text)
-    text = soup.get_text(separator=" ", strip=True)
-    word_count = len(text.split())
+    # ── Viewport / Mobile ─────────────────────────────────────────────────
+    vp_tag = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.I)})
+    has_viewport = vp_tag is not None
+    vp_content = (vp_tag.get("content", "") if vp_tag else "").lower()
+    has_device_width = "width=device-width" in vp_content
+    has_initial_scale = "initial-scale=1" in vp_content
+    html_lower = html.lower()
+    has_responsive_fw = any(x in html_lower for x in ["bootstrap", "tailwind", "foundation", "@media"])
+    mobile_web_cap = bool(soup.find("meta", attrs={"name": re.compile(r"mobile-web-app|apple-mobile-web-app", re.I)}))
 
-    # Images
+    # ── Word Count ────────────────────────────────────────────────────────
+    for tag in soup(["script", "style", "noscript"]):
+        tag.decompose()
+    word_count = len(soup.get_text(separator=" ", strip=True).split())
+
+    # ── Images ────────────────────────────────────────────────────────────
     images = soup.find_all("img")
     images_total = len(images)
     images_with_alt = sum(1 for img in images if img.get("alt", "").strip())
     images_without_alt = images_total - images_with_alt
 
-    # Links
-    links = soup.find_all("a", href=True)
-    internal_links = 0
-    external_links = 0
-    for link in links:
-        href = link["href"]
+    # ── Links ─────────────────────────────────────────────────────────────
+    internal_links = external_links = 0
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
         if href.startswith(("#", "mailto:", "tel:", "javascript:")):
             continue
-        link_parsed = urlparse(href)
-        if not link_parsed.netloc or link_parsed.netloc == domain:
+        lp = urlparse(href)
+        if not lp.netloc or lp.netloc == domain:
             internal_links += 1
         else:
             external_links += 1
 
-    # Mobile-friendly check (viewport meta)
-    viewport_tag = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.I)})
-    has_viewport = viewport_tag is not None
+    # ── Schema / OG / Canonical ───────────────────────────────────────────
+    has_schema    = len(soup.find_all("script", type="application/ld+json")) > 0
+    has_og        = soup.find("meta", property="og:title") is not None
+    has_canonical = soup.find("link", rel="canonical") is not None
+    robots_meta   = soup.find("meta", attrs={"name": re.compile(r"^robots$", re.I)})
+    robots_blocked = "noindex" in (robots_meta.get("content", "").lower() if robots_meta else "")
+    has_analytics = ("google-analytics.com" in html_lower or "gtag(" in html_lower or "googletagmanager.com" in html_lower)
+    has_favicon   = soup.find("link", rel=lambda r: r and "icon" in " ".join(r if isinstance(r, list) else [r]).lower()) is not None
 
-    # Basic SEO score (0-100)
-    score = 0
+    # ── SEO Score (0-100) ─────────────────────────────────────────────────
+    seo = 0
+    if https:               seo += 12
     if title:
-        score += 15
-        if 30 <= len(title) <= 65:
-            score += 5
+        seo += 7
+        if 30 <= len(title) <= 65: seo += 7
+        elif len(title) > 10:      seo += 3
     if meta_description:
-        score += 15
-        if 120 <= len(meta_description) <= 160:
-            score += 5
+        seo += 7
+        if 120 <= len(meta_description) <= 160: seo += 6
+        elif len(meta_description) > 50:        seo += 3
     if h1_tags:
-        score += 10
-        if len(h1_tags) == 1:
-            score += 5
-    if has_viewport:
-        score += 10
-    if word_count >= 300:
-        score += 10
-    if images_total > 0 and images_without_alt == 0:
-        score += 10
-    if internal_links >= 3:
-        score += 5
-    if external_links >= 1:
-        score += 5
-    if load_time < 3:
-        score += 5
+        seo += 5
+        if len(h1_tags) == 1: seo += 4
+    if has_viewport:        seo += 8
+    if word_count >= 300:   seo += 5
+    if word_count >= 800:   seo += 3
+    elif word_count >= 100: seo += 2
+    if load_time < 1.5:     seo += 8
+    elif load_time < 3:     seo += 5
+    elif load_time < 5:     seo += 2
+    if images_total > 0 and images_without_alt == 0: seo += 5
+    elif images_total > 0 and images_with_alt > 0:   seo += 2
+    elif images_total == 0:                           seo += 2
+    if internal_links >= 3: seo += 3
+    if external_links >= 1: seo += 2
+    if has_schema:          seo += 5
+    if h2_count >= 2:       seo += 3
+    elif h2_count >= 1:     seo += 1
+    if has_og:              seo += 2
+    if has_canonical:       seo += 2
+    if has_sitemap:         seo += 3
+    if has_robots:          seo += 2
+    if broken_links_count == 0 and internal_links > 0: seo += 2
+    if robots_blocked:      seo = int(seo * 0.4)
+    seo_score = min(seo, 100)
 
-    result = {
-        "url": url,
-        "title": title,
+    # ── Mobile Score (0-100) ──────────────────────────────────────────────
+    mob = 0
+    if has_viewport:         mob += 40
+    if has_device_width:     mob += 20
+    if has_initial_scale:    mob += 10
+    if has_responsive_fw:    mob += 15
+    if mobile_web_cap:       mob += 5
+    if images_total > 0 and images_without_alt == 0: mob += 5
+    if https:                mob += 5
+    mobile_score = min(mob, 100)
+
+    # ── Speed Score (0-100) ───────────────────────────────────────────────
+    js_files  = len(soup.find_all("script", src=True))
+    css_files = len(soup.find_all("link", rel=lambda r: r and "stylesheet" in (r if isinstance(r, list) else [r])))
+    if   load_time < 0.8:  spd = 95
+    elif load_time < 1.5:  spd = 85
+    elif load_time < 2.5:  spd = 72
+    elif load_time < 4.0:  spd = 55
+    elif load_time < 6.0:  spd = 38
+    else:                  spd = 20
+    # Abzug für viele unkomprimierte Ressourcen
+    if js_files > 15:  spd -= 8
+    elif js_files > 8: spd -= 3
+    if css_files > 8:  spd -= 5
+    elif css_files > 4: spd -= 2
+    speed_score = max(min(spd, 100), 5)
+
+    # ── Recommendations ───────────────────────────────────────────────────
+    recs = []
+    if not https:            recs.append("Kein HTTPS — SSL-Zertifikat einrichten")
+    if not title:            recs.append("Fehlender Title-Tag")
+    elif not (30 <= len(title) <= 65): recs.append("Title-Länge optimieren (30–65 Zeichen)")
+    if not meta_description: recs.append("Fehlende Meta Description")
+    elif not (120 <= len(meta_description) <= 160): recs.append("Meta Description optimieren (120–160 Zeichen)")
+    if not h1_tags:          recs.append("Keine H1-Überschrift")
+    elif len(h1_tags) > 1:   recs.append("Mehrere H1-Tags — nur eine verwenden")
+    if not has_viewport:     recs.append("Nicht mobiloptimiert (Viewport-Meta fehlt)")
+    if word_count < 300:     recs.append("Zu wenig Textinhalt (unter 300 Wörter)")
+    if load_time >= 3:       recs.append(f"Langsame Ladezeit ({load_time}s)")
+    if images_without_alt > 0: recs.append(f"{images_without_alt} Bilder ohne Alt-Text")
+    if not has_schema:       recs.append("Keine strukturierten Daten (Schema.org)")
+    if not has_og:           recs.append("Keine Open-Graph-Tags (Social Sharing)")
+    if not has_sitemap:      recs.append("Keine Sitemap gefunden")
+    if not has_robots:       recs.append("Keine robots.txt gefunden")
+    if broken_links_count > 0: recs.append(f"{broken_links_count} defekte Links gefunden")
+    if not has_analytics:    recs.append("Kein Web-Tracking (Google Analytics / GTM)")
+    if robots_blocked:       recs.append("Seite per noindex von der Google-Indexierung ausgeschlossen")
+
+    return jsonify({
+        # Basis
+        "url":             final_url,
+        "https":           https,
+        "loadTime":        load_time,
+        # Scores
+        "seoScore":        seo_score,
+        "mobileScore":     mobile_score,
+        "speedScore":      speed_score,
+        # SEO-Elemente
+        "title":           title,
         "metaDescription": meta_description,
-        "h1Tags": h1_tags,
-        "wordCount": word_count,
-        "images": {
-            "total": images_total,
-            "withAlt": images_with_alt,
-            "withoutAlt": images_without_alt,
-        },
-        "links": {
-            "internal": internal_links,
-            "external": external_links,
-        },
-        "mobileFriendly": has_viewport,
-        "loadTime": load_time,
-        "seoScore": score,
-    }
-
-    return jsonify(result)
+        "h1":              h1_tags[0] if h1_tags else "",
+        "h1Tags":          h1_tags,
+        "h2Count":         h2_count,
+        "wordCount":       word_count,
+        # Bilder
+        "imagesTotal":     images_total,
+        "imagesWithAlt":   images_with_alt,
+        "imagesWithoutAlt": images_without_alt,
+        # Links
+        "internalLinks":   internal_links,
+        "externalLinks":   external_links,
+        "brokenLinksCount": broken_links_count,
+        # Technisch
+        "hasSitemap":      has_sitemap,
+        "hasRobots":       has_robots,
+        "hasSchema":       has_schema,
+        "hasOG":           has_og,
+        "hasCanonical":    has_canonical,
+        "hasMobile":       has_viewport,
+        "hasAnalytics":    has_analytics,
+        "hasFavicon":      has_favicon,
+        "robotsBlocked":   robots_blocked,
+        "jsFiles":         js_files,
+        "cssFiles":        css_files,
+        "technologies":    detect_technologies(html, soup),
+        # Empfehlungen
+        "recommendations": recs,
+    })
 
 
 # ===== COMPANY DIGITAL FOOTPRINT =====
