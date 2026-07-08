@@ -1238,7 +1238,7 @@ function generateKundenBericht(a) {
   const seoDetail = [
     !title    ? '→ Kein aussagekräftiger Seitentitel — Google zeigt diesen in Suchergebnissen an' : null,
     !metaDesc ? '→ Keine Meta-Beschreibung — der Beschreibungstext unter Ihrem Google-Eintrag fehlt' : null,
-    !h1       ? '→ Keine Hauptüberschrift (H1) — Google weiß nicht worum es auf der Seite geht' : null,
+    !h1       ? '→ Keine Hauptüberschrift (H1) — Google weiß nicht, worum es auf der Seite geht' : null,
     !hasSitemap ? '→ Keine Sitemap — Google findet Ihre Inhalte langsamer' : null,
     wordCount < 300 ? `→ Sehr wenig Textinhalt (${wordCount} Wörter) — Google bevorzugt informative Seiten` : null,
     imagesWithout > 0 ? `→ ${imagesWithout} Bilder ohne Bildbeschreibung (Alt-Text)` : null,
@@ -1450,7 +1450,7 @@ function buildAnalysePdfHtml(a) {
   const seoHinweise = [
     !title    ? 'Kein aussagekräftiger Seitentitel vorhanden — Google zeigt diesen in den Suchergebnissen an' : (title.length < 30 || title.length > 65) ? `Seitentitel ist ${title.length < 30 ? 'zu kurz' : 'zu lang'} (${title.length} Zeichen, optimal: 30–65)` : null,
     !metaDesc ? 'Keine Meta-Beschreibung — der Text unter Ihrem Google-Eintrag fehlt völlig' : (metaDesc.length < 120 || metaDesc.length > 160) ? `Meta-Beschreibung nicht optimal (${metaDesc.length} Zeichen, optimal: 120–160)` : null,
-    !h1       ? 'Keine Hauptüberschrift (H1) — Google weiß nicht worum es auf der Seite geht' : null,
+    !h1       ? 'Keine Hauptüberschrift (H1) — Google weiß nicht, worum es auf der Seite geht' : null,
     !hasSitemap ? 'Keine Sitemap vorhanden — Google findet Ihre Inhalte langsamer und unvollständig' : null,
     wordCount < 300 ? `Sehr wenig Textinhalt (${wordCount} Wörter) — Google bevorzugt informative Seiten` : null,
     imagesWithout > 0 ? `${imagesWithout} Bilder ohne Beschreibung (Alt-Text) — unsichtbar für Google und blinde Nutzer` : null,
@@ -1500,7 +1500,7 @@ function buildAnalysePdfHtml(a) {
       nr: 4,
       bereich: 'Sicherheit (HTTPS)',
       befund: https === true
-        ? `Die Website ist verschlüsselt (HTTPS). Besucher sehen kein Sicherheitswarnung im Browser.${brokenLinks > 0 ? ` Allerdings wurden ${brokenLinks} defekte Links gefunden, die Besucher auf Fehlerseiten führen.` : ''}`
+        ? `Die Website ist verschlüsselt (HTTPS). Besucher sehen keine Sicherheitswarnung im Browser.${brokenLinks > 0 ? ` Allerdings wurden ${brokenLinks} defekte Links gefunden, die Besucher auf Fehlerseiten führen.` : ''}`
         : https === false
         ? `Die Website ist NICHT verschlüsselt. Browser wie Chrome und Firefox zeigen Besuchern eine rote Warnung „Nicht sicher". Das schreckt Kunden ab und führt zu deutlich weniger Anfragen. Google wertet unverschlüsselte Seiten schlechter.`
         : `Sicherheitsstatus konnte nicht geprüft werden.`,
