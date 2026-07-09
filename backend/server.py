@@ -1192,15 +1192,12 @@ def search_businesses():
     source_list = []
     if portals in ("all", "osm"):
         source_list.append(("OpenStreetMap", search_osm, (query or "", location, radius)))
-    if portals in ("all", "wko") and query:
-        source_list.append(("WKO Firmen A-Z", search_wko, (query, location)))
+    if portals in ("all", "wko"):
+        source_list.append(("WKO Firmen A-Z", search_wko, (query or "", location)))
     if portals in ("all", "herold") and query:
         source_list.append(("Herold.at", search_herold, (query, location)))
     if portals in ("all", "firmenabc") and query:
         source_list.append(("FirmenABC.at", search_firmenabc, (query, location)))
-    # Wenn kein Query aber spezifisches Portal gewählt
-    if not query and portals == "wko":
-        source_list.append(("WKO Firmen A-Z", search_wko, ("", location)))
 
     # PARALLEL Portal-Abfrage — alle Portale gleichzeitig
     def _search_portal(name, fn, args):
